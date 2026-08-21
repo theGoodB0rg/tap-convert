@@ -100,7 +100,9 @@ fun DashboardScreen(
                         Text(
                             text = if (records.isEmpty()) "Ready for your 1st conversion" else "${records.size} conversions completed offline",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
 
@@ -113,6 +115,8 @@ fun DashboardScreen(
                             color = SavingsGreen,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
                         )
                     }
@@ -304,12 +308,16 @@ fun DashboardScreen(
                     Text(
                         text = "Unlock Batch Mode & Ultra Speed",
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "Watch a 30s video for 24h Fast-Pass pass",
+                        text = "Watch a 30s video for 24h Fast-Pass",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 }
 
@@ -318,7 +326,7 @@ fun DashboardScreen(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Unlock", style = MaterialTheme.typography.labelMedium)
+                    Text("Unlock", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                 }
             }
         }

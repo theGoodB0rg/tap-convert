@@ -58,8 +58,10 @@ fun ConfigurationScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Configure Engine",
-                        fontWeight = FontWeight.Bold
+                        text = "Conversion Options",
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
@@ -90,7 +92,10 @@ fun ConfigurationScreen(
                         Text(
                             text = if (activePreset != null) "Convert via ${activePreset.name}" else "Start Offline Conversion",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -325,10 +330,12 @@ fun ConfigurationScreen(
                                 )
                             }
                             Text(
-                                text = "⚡ GPU Fast Mode",
+                                text = "⚡ Fast Mode",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                softWrap = false
                             )
                         }
                     }
@@ -361,9 +368,11 @@ fun ConfigurationScreen(
                                 tint = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "Advanced Transformation Options",
+                                text = "Advanced Details",
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                         Icon(
@@ -380,17 +389,17 @@ fun ConfigurationScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = "• Dimension Constraint: ${request.dimensionConstraint}",
+                                text = "• Resize Dimensions: ${request.dimensionConstraint}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "• Metadata & EXIF: Stripped for Privacy & Minimized Size",
+                                text = "• Keep Details: Photo date and location preserved",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "• Transcoder Engine: Direct Memory Buffer Transcode",
+                                text = "• Processing: 100% Local On-Device Conversion",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

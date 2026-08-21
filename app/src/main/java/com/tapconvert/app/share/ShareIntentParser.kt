@@ -117,14 +117,14 @@ object ShareIntentParser {
         return uris
     }
 
-    fun detectMimeType(intent: Intent, uris: List<Uri>): String {
-        val intentType = intent.type
+    fun detectMimeType(intent: Intent?, uris: List<Uri>): String {
+        val intentType = intent?.type
         if (!intentType.isNullOrBlank() && intentType != "*/*") {
             return intentType
         }
 
         val firstUri = uris.firstOrNull() ?: return "*/*"
-        val extension = firstUri.lastPathSegment?.substringAfterLast('.', "")?.lowercase() ?: ""
+        val extension = (firstUri.lastPathSegment ?: firstUri.path ?: "").substringAfterLast('.', "").lowercase()
         return when (extension) {
             "jpg", "jpeg" -> "image/jpeg"
             "png" -> "image/png"
@@ -141,20 +141,21 @@ object ShareIntentParser {
         }
     }
 
-    fun determineCategory(mimeType: String, uris: List<Uri>): MediaCategory {
+    fun determineCategory(mimeType: String, uris: List<Uri> = emptyList()): MediaCategory {
         val lowerMime = mimeType.lowercase()
         return when {
             lowerMime.startsWith("image/") -> MediaCategory.IMAGE
             lowerMime.startsWith("video/") -> MediaCategory.VIDEO
             lowerMime.startsWith("audio/") -> MediaCategory.AUDIO
-            lowerMime == "application/pdf" || uris.any { it.lastPathSegment?.endsWith(".pdf", ignoreCase = true) == true } -> MediaCategory.DOCUMENT
+            lowerMime == "application/pdf" || uris.any { (it.lastPathSegment ?: it.path ?: "").endsWith(".pdf", ignoreCase = true) } -> MediaCategory.DOCUMENT
             else -> {
-                val firstUri = uris.firstOrNull()?.lastPathSegment?.lowercase() ?: ""
+                val firstUri = uris.firstOrNull()
+                val pathSegment = (firstUri?.lastPathSegment ?: firstUri?.path ?: "").lowercase()
                 when {
-                    firstUri.endsWith(".png") || firstUri.endsWith(".jpg") || firstUri.endsWith(".jpeg") || firstUri.endsWith(".webp") || firstUri.endsWith(".heic") -> MediaCategory.IMAGE
-                    firstUri.endsWith(".mp4") || firstUri.endsWith(".mkv") || firstUri.endsWith(".mov") || firstUri.endsWith(".webm") -> MediaCategory.VIDEO
-                    firstUri.endsWith(".mp3") || firstUri.endsWith(".aac") || firstUri.endsWith(".m4a") || firstUri.endsWith(".wav") -> MediaCategory.AUDIO
-                    firstUri.endsWith(".pdf") -> MediaCategory.DOCUMENT
+                    pathSegment.endsWith(".png") || pathSegment.endsWith(".jpg") || pathSegment.endsWith(".jpeg") || pathSegment.endsWith(".webp") || pathSegment.endsWith(".heic") -> MediaCategory.IMAGE
+                    pathSegment.endsWith(".mp4") || pathSegment.endsWith(".mkv") || pathSegment.endsWith(".mov") || pathSegment.endsWith(".webm") -> MediaCategory.VIDEO
+                    pathSegment.endsWith(".mp3") || pathSegment.endsWith(".aac") || pathSegment.endsWith(".m4a") || pathSegment.endsWith(".wav") -> MediaCategory.AUDIO
+                    pathSegment.endsWith(".pdf") -> MediaCategory.DOCUMENT
                     else -> MediaCategory.IMAGE
                 }
             }

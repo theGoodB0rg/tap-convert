@@ -143,7 +143,7 @@ fun ProcessingScreen(
                     .weight(1f)
                     .height(48.dp)
             ) {
-                Text("Cancel")
+                Text("Cancel", maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
 
             FilledTonalButton(
@@ -153,7 +153,7 @@ fun ProcessingScreen(
                     .weight(1f)
                     .height(48.dp)
             ) {
-                Text("Background")
+                Text("Background", maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             }
         }
     }

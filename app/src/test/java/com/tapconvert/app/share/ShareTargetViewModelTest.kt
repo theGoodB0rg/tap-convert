@@ -1,7 +1,5 @@
 package com.tapconvert.app.share
 
-import android.content.Intent
-import android.net.Uri
 import com.google.common.truth.Truth.assertThat
 import com.tapconvert.core.ads.DefaultAdManager
 import com.tapconvert.core.database.repository.InMemoryConversionHistoryRepository
@@ -14,12 +12,7 @@ import com.tapconvert.core.testing.FakeAnalyticsTracker
 import com.tapconvert.feature.image.engine.DefaultImageEngine
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
-import io.mockk.every
-import io.mockk.mockk
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runTest
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -38,8 +31,6 @@ class ShareTargetViewModelTest {
     private val fakeAnalytics = FakeAnalyticsTracker()
     private val historyRepo = InMemoryConversionHistoryRepository()
     private val adManager = DefaultAdManager(analyticsTracker = fakeAnalytics)
-
-    private val testDispatcher = StandardTestDispatcher()
 
     private val viewModel = ShareTargetViewModel(
         imageEngine = DefaultImageEngine(fakeAnalytics),
@@ -69,25 +60,17 @@ class ShareTargetViewModelTest {
     }
 
     @Test
-    fun `loadFromIntent with image intent populates Ready state with presets`() {
-        val imageFile = tempFolder.newFile("sample.jpg").apply {
-            writeBytes(ByteArray(512) { 0xFF.toByte() })
-        }
+    fun `loadFromPayload with image payload populates Ready state with presets`() {
+        val payload = SharePayload(
+            sourceUris = listOf("file:///path/sample.jpg"),
+            fileNames = listOf("sample.jpg"),
+            mimeType = "image/jpeg",
+            category = MediaCategory.IMAGE,
+            isMultiple = false,
+            totalSizeBytes = 1024L
+        )
 
-        val uri = mockk<Uri>()
-        every { uri.scheme } returns "file"
-        every { uri.path } returns imageFile.absolutePath
-        every { uri.lastPathSegment } returns "sample.jpg"
-
-        val intent = mockk<Intent>()
-        every { intent.action } returns Intent.ACTION_SEND
-        every { intent.type } returns "image/jpeg"
-        every { intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) } returns uri
-        every { intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) } returns uri
-        every { intent.data } returns null
-        every { intent.clipData } returns null
-
-        viewModel.loadFromIntent(intent, null, cacheDir)
+        viewModel.loadFromPayload(payload)
 
         val state = viewModel.uiState.value
         assertThat(state).isInstanceOf(ShareTargetUiState.Ready::class.java)
@@ -100,24 +83,16 @@ class ShareTargetViewModelTest {
 
     @Test
     fun `selectPreset updates selected preset and logs telemetry`() {
-        val imageFile = tempFolder.newFile("sample.jpg").apply {
-            writeBytes(ByteArray(512) { 0xFF.toByte() })
-        }
+        val payload = SharePayload(
+            sourceUris = listOf("file:///path/sample.jpg"),
+            fileNames = listOf("sample.jpg"),
+            mimeType = "image/jpeg",
+            category = MediaCategory.IMAGE,
+            isMultiple = false,
+            totalSizeBytes = 1024L
+        )
 
-        val uri = mockk<Uri>()
-        every { uri.scheme } returns "file"
-        every { uri.path } returns imageFile.absolutePath
-        every { uri.lastPathSegment } returns "sample.jpg"
-
-        val intent = mockk<Intent>()
-        every { intent.action } returns Intent.ACTION_SEND
-        every { intent.type } returns "image/jpeg"
-        every { intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) } returns uri
-        every { intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) } returns uri
-        every { intent.data } returns null
-        every { intent.clipData } returns null
-
-        viewModel.loadFromIntent(intent, null, cacheDir)
+        viewModel.loadFromPayload(payload)
         viewModel.selectPreset(Preset.GovPassport200KB)
 
         val ready = viewModel.uiState.value as ShareTargetUiState.Ready
@@ -127,22 +102,16 @@ class ShareTargetViewModelTest {
 
     @Test
     fun `updateQuality and updateTargetSize adjust custom parameters`() {
-        val imageFile = tempFolder.newFile("sample.jpg").apply { writeBytes(ByteArray(512)) }
+        val payload = SharePayload(
+            sourceUris = listOf("file:///path/sample.jpg"),
+            fileNames = listOf("sample.jpg"),
+            mimeType = "image/jpeg",
+            category = MediaCategory.IMAGE,
+            isMultiple = false,
+            totalSizeBytes = 1024L
+        )
 
-        val uri = mockk<Uri>()
-        every { uri.scheme } returns "file"
-        every { uri.path } returns imageFile.absolutePath
-        every { uri.lastPathSegment } returns "sample.jpg"
-
-        val intent = mockk<Intent>()
-        every { intent.action } returns Intent.ACTION_SEND
-        every { intent.type } returns "image/jpeg"
-        every { intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) } returns uri
-        every { intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM) } returns uri
-        every { intent.data } returns null
-        every { intent.clipData } returns null
-
-        viewModel.loadFromIntent(intent, null, cacheDir)
+        viewModel.loadFromPayload(payload)
         viewModel.updateQuality(ConversionQuality.Low)
         viewModel.updateTargetSize(TargetSize.fromKilobytes(100))
         viewModel.updateTargetMimeType(MimeType.Image.WEBP)

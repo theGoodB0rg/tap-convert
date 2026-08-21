@@ -343,7 +343,10 @@ private fun ReadyContent(
             Text(
                 text = if (selectedPreset != null) "Convert & Return: ${selectedPreset.name}" else "Convert & Return: ${selectedTargetMimeType.displayName}",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
         }
     }
@@ -489,7 +492,13 @@ private fun SuccessContent(
         ) {
             Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Share Converted File Back", fontWeight = FontWeight.Bold)
+            Text(
+                text = "Share Converted File Back",
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
 
         OutlinedButton(
@@ -497,7 +506,7 @@ private fun SuccessContent(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Done")
+            Text("Done", maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }
@@ -523,7 +532,9 @@ private fun ErrorContent(
         Text(
             text = "Conversion Failed",
             style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
         Text(
             text = message,
@@ -535,7 +546,7 @@ private fun ErrorContent(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Close")
+            Text("Close", maxLines = 1, softWrap = false, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }
 }

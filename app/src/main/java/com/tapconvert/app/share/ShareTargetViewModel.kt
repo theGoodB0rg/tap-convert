@@ -54,6 +54,10 @@ class ShareTargetViewModel(
     fun loadFromIntent(intent: Intent?, contentResolver: ContentResolver?, cacheDir: File) {
         stagingDirectory = cacheDir
         val payload = ShareIntentParser.parse(intent, contentResolver, cacheDir)
+        loadFromPayload(payload)
+    }
+
+    fun loadFromPayload(payload: SharePayload?) {
         if (payload == null) {
             _uiState.value = ShareTargetUiState.Error(
                 ConversionError.FileNotFound("No supported files found in share request")

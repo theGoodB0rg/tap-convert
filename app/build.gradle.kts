@@ -47,6 +47,9 @@ android {
     }
     testOptions {
         unitTests.isReturnDefaultValues = true
+        unitTests.all {
+            it.jvmArgs("-Xmx3072m", "-XX:+EnableDynamicAgentLoading")
+        }
     }
 }
 
@@ -87,7 +90,6 @@ dependencies {
     testImplementation(project(":core:testing"))
     testImplementation(libs.junit)
     testImplementation(libs.truth)
-    testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
 

@@ -181,16 +181,20 @@ fun ResultScreen(
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "Visual Fidelity Inspection",
+                            text = "Quality Preview",
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                     }
                     Text(
                         text = "100% Offline",
                         style = MaterialTheme.typography.labelSmall,
                         color = SavingsGreen,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
 
@@ -336,7 +340,7 @@ fun ResultScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Engine Strategy",
+                        text = "Conversion Type",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -351,7 +355,7 @@ fun ResultScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Transcode Time",
+                        text = "Processing Time",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -388,7 +392,12 @@ fun ResultScreen(
                     tint = if (isFavorited) Color.Red else MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(if (isFavorited) "Saved" else "Save")
+                Text(
+                    text = if (isFavorited) "Saved" else "Save",
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
 
             Button(
@@ -405,7 +414,13 @@ fun ResultScreen(
             ) {
                 Icon(Icons.Default.Share, contentDescription = "Share")
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Share Converted", fontWeight = FontWeight.Bold)
+                Text(
+                    text = "Share Converted",
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
             }
         }
 
@@ -413,7 +428,12 @@ fun ResultScreen(
             onClick = onDoneClick,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Done / Convert Another File")
+            Text(
+                text = "Done / Convert Another File",
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
         }
     }
 }

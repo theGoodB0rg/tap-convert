@@ -10,4 +10,8 @@ plugins {
 allprojects {
     val modulePath = if (path == ":") "root" else path.trimStart(':').replace(':', '/')
     layout.buildDirectory.set(file("C:/Users/HP/.gradle/builds/TapConvert/$modulePath"))
+
+    tasks.withType<Test>().configureEach {
+        maxHeapSize = "2048m"
+    }
 }

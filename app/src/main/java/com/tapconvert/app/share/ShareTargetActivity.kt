@@ -90,11 +90,21 @@ class ShareTargetActivity : ComponentActivity() {
 
     private fun dispatchShareResult(outputPath: String) {
         val file = File(outputPath)
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "*/*"
-            putExtra(Intent.EXTRA_STREAM, file.absolutePath)
+        if (file.exists()) {
+            val extension = file.extension.lowercase()
+            val mimeType = when (extension) {
+                "jpg", "jpeg" -> com.tapconvert.core.model.MimeType.Image.JPEG
+                "png" -> com.tapconvert.core.model.MimeType.Image.PNG
+                "webp" -> com.tapconvert.core.model.MimeType.Image.WEBP
+                "mp4" -> com.tapconvert.core.model.MimeType.Video.MP4
+                "mp3" -> com.tapconvert.core.model.MimeType.Audio.MP3
+                "pdf" -> com.tapconvert.core.model.MimeType.Document.PDF
+                else -> com.tapconvert.core.model.MimeType.Image.JPEG
+            }
+            com.tapconvert.core.common.MediaPublicExporter.exportFile(this, file, mimeType)
         }
-        startActivity(Intent.createChooser(shareIntent, "Share Converted File"))
+        val chooserIntent = ShareHelper.createShareChooserIntent(this, outputPath)
+        startActivity(chooserIntent)
         finish()
     }
 }

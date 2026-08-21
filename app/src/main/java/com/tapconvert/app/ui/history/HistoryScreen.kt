@@ -106,11 +106,16 @@ fun HistoryScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.CleaningServices,
-                            contentDescription = "Clean Cache",
+                            contentDescription = "Free Up Space",
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Clean Cache", style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = "Free Up Space",
+                            style = MaterialTheme.typography.labelSmall,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
 

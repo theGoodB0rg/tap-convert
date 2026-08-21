@@ -2,6 +2,7 @@ package com.tapconvert.app.ui
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -12,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,10 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tapconvert.app.share.ShareHelper
 import com.tapconvert.app.share.ShareIntentParser
 import com.tapconvert.app.ui.config.ConfigurationScreen
 import com.tapconvert.app.ui.dashboard.DashboardScreen
@@ -31,21 +35,33 @@ import com.tapconvert.app.ui.history.HistoryScreen
 import com.tapconvert.app.ui.history.HistoryViewModel
 import com.tapconvert.app.ui.processing.ProcessingScreen
 import com.tapconvert.app.ui.result.ResultScreen
+import com.tapconvert.app.ui.settings.AboutUsScreen
+import com.tapconvert.app.ui.settings.PrivacyPolicyScreen
+import com.tapconvert.app.ui.settings.SettingsScreen
 import com.tapconvert.app.ui.theme.AccentAmber
 import com.tapconvert.app.ui.theme.TapConvertTheme
 import com.tapconvert.core.ads.AdReward
-import com.tapconvert.core.database.TapConvertDatabase
+import com.tapconvert.core.common.DataStoreAppSettingsManager
+import com.tapconvert.core.common.MediaPublicExporter
 import com.tapconvert.core.database.cleaner.LruDiskCleaner
 import com.tapconvert.core.database.repository.RoomConversionHistoryRepository
 import com.tapconvert.core.model.ConversionType
 import com.tapconvert.core.model.MediaCategory
 import com.tapconvert.core.model.MimeType
 import com.tapconvert.core.model.Preset
+import kotlinx.coroutines.launch
 import java.io.File
 
 enum class NavigationTab {
     DASHBOARD,
-    HISTORY
+    HISTORY,
+    SETTINGS
+}
+
+enum class SettingsSubScreen {
+    MAIN,
+    PRIVACY_POLICY,
+    ABOUT_US
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -53,6 +69,7 @@ enum class NavigationTab {
 fun TapConvertApp() {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
+    val coroutineScope = rememberCoroutineScope()
     val isExpandedScreen = configuration.screenWidthDp >= 600
 
     // Initialize Room SQLite Database & Repository
@@ -63,6 +80,12 @@ fun TapConvertApp() {
             repository = repository
         )
     }
+
+    // Initialize Settings Manager
+    val settingsManager = remember { DataStoreAppSettingsManager.create(context) }
+    val customStorageUri by settingsManager.customStorageUri.collectAsState(initial = null)
+    val customStorageDisplayPath by settingsManager.customStorageDisplayPath.collectAsState(initial = null)
+    val autoSaveToGallery by settingsManager.autoSaveToGallery.collectAsState(initial = true)
 
     val mainViewModel: MainViewModel = viewModel(factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -87,6 +110,7 @@ fun TapConvertApp() {
     val onlyFavoritesFilter by historyViewModel.onlyFavoritesFilter.collectAsState()
 
     var currentTab by remember { mutableStateOf(NavigationTab.DASHBOARD) }
+    var settingsSubScreen by remember { mutableStateOf(SettingsSubScreen.MAIN) }
     var showFastPassDialog by remember { mutableStateOf(false) }
 
     var pendingPreset by remember { mutableStateOf<Preset?>(null) }
@@ -166,10 +190,50 @@ fun TapConvertApp() {
         processPickedUris(uris)
     }
 
+    // Storage Access Framework (SAF) Custom Save Folder Picker
+    val openDocumentTreeLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            try {
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+            } catch (_: Throwable) {}
+            val displayPath = uri.lastPathSegment ?: uri.path ?: "Custom Folder"
+            coroutineScope.launch {
+                settingsManager.setCustomStorageLocation(uri.toString(), displayPath)
+                Toast.makeText(context, "Save folder updated: $displayPath", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     // Interstitial consumption callback
     LaunchedEffect(shouldShowInterstitial) {
         if (shouldShowInterstitial) {
             mainViewModel.onInterstitialConsumed()
+        }
+    }
+
+    // Auto export to public MediaStore on successful conversion
+    LaunchedEffect(uiState) {
+        val successState = uiState as? ConversionUiState.Success
+        if (successState != null && autoSaveToGallery) {
+            val outputUris = successState.result.outputUris
+            for (uriStr in outputUris) {
+                val f = File(uriStr.removePrefix("file://"))
+                if (f.exists()) {
+                    val mimeType = MimeType.fromFileName(f.name)
+                    val exportResult = MediaPublicExporter.exportFile(
+                        context = context,
+                        sourceFile = f,
+                        mimeType = mimeType,
+                        customTreeUriString = customStorageUri
+                    )
+                    if (exportResult.isSuccess) {
+                        Toast.makeText(context, exportResult.destinationDisplay, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
         }
     }
 
@@ -189,13 +253,15 @@ fun TapConvertApp() {
                 title = {
                     Text(
                         text = "TapConvert Fast-Pass",
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "⚡ Unlimited Batch Conversions (50+ files)\n⚡ GPU Ultra Multi-Threaded Processing\n⚡ 100% Ad-Free for 24 Hours",
+                            text = "⚡ Unlimited Batch Conversions (50+ files)\n⚡ Lightning Fast Offline Conversion\n⚡ 100% Ad-Free for 24 Hours",
                             style = MaterialTheme.typography.bodyMedium
                         )
                     }
@@ -208,12 +274,12 @@ fun TapConvertApp() {
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AccentAmber)
                     ) {
-                        Text("Watch 1 Short Video (Free 24h)", color = MaterialTheme.colorScheme.surface)
+                        Text("Watch 1 Short Video (Free 24h)", color = MaterialTheme.colorScheme.surface, maxLines = 1, softWrap = false)
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showFastPassDialog = false }) {
-                        Text("Maybe Later")
+                        Text("Maybe Later", maxLines = 1, softWrap = false)
                     }
                 }
             )
@@ -227,32 +293,43 @@ fun TapConvertApp() {
                         selected = currentTab == NavigationTab.DASHBOARD,
                         onClick = { currentTab = NavigationTab.DASHBOARD },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Dashboard") },
-                        label = { Text("Convert") }
+                        label = { Text("Convert", maxLines = 1, softWrap = false) }
                     )
                     NavigationRailItem(
                         selected = currentTab == NavigationTab.HISTORY,
                         onClick = { currentTab = NavigationTab.HISTORY },
                         icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                        label = { Text("History") }
+                        label = { Text("History", maxLines = 1, softWrap = false) }
+                    )
+                    NavigationRailItem(
+                        selected = currentTab == NavigationTab.SETTINGS,
+                        onClick = {
+                            settingsSubScreen = SettingsSubScreen.MAIN
+                            currentTab = NavigationTab.SETTINGS
+                        },
+                        icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                        label = { Text("Settings", maxLines = 1, softWrap = false) }
                     )
                 }
             }
 
             Scaffold(
                 topBar = {
-                    if (uiState is ConversionUiState.Idle) {
+                    if (uiState is ConversionUiState.Idle && currentTab != NavigationTab.SETTINGS) {
                         TopAppBar(
                             title = {
                                 Text(
                                     text = "TapConvert",
-                                    fontWeight = FontWeight.ExtraBold
+                                    fontWeight = FontWeight.ExtraBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             },
                             actions = {
                                 if (adState.isBatchModeUnlocked()) {
                                     AssistChip(
                                         onClick = { showFastPassDialog = true },
-                                        label = { Text("Fast Pass Active") },
+                                        label = { Text("Fast Pass Active", maxLines = 1, softWrap = false) },
                                         leadingIcon = {
                                             Icon(
                                                 imageVector = Icons.Default.Star,
@@ -275,7 +352,7 @@ fun TapConvertApp() {
                                             tint = AccentAmber
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Fast Pass", style = MaterialTheme.typography.labelSmall)
+                                        Text("Fast Pass", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                                     }
                                 }
                             }
@@ -289,13 +366,22 @@ fun TapConvertApp() {
                                 selected = currentTab == NavigationTab.DASHBOARD,
                                 onClick = { currentTab = NavigationTab.DASHBOARD },
                                 icon = { Icon(Icons.Default.Home, contentDescription = "Dashboard") },
-                                label = { Text("Convert") }
+                                label = { Text("Convert", maxLines = 1, softWrap = false) }
                             )
                             NavigationBarItem(
                                 selected = currentTab == NavigationTab.HISTORY,
                                 onClick = { currentTab = NavigationTab.HISTORY },
                                 icon = { Icon(Icons.Default.History, contentDescription = "History") },
-                                label = { Text("History") }
+                                label = { Text("History", maxLines = 1, softWrap = false) }
+                            )
+                            NavigationBarItem(
+                                selected = currentTab == NavigationTab.SETTINGS,
+                                onClick = {
+                                    settingsSubScreen = SettingsSubScreen.MAIN
+                                    currentTab = NavigationTab.SETTINGS
+                                },
+                                icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
+                                label = { Text("Settings", maxLines = 1, softWrap = false) }
                             )
                         }
                     }
@@ -376,6 +462,44 @@ fun TapConvertApp() {
                                         onCleanCacheClick = { historyViewModel.triggerDiskCleanup() }
                                     )
                                 }
+                                NavigationTab.SETTINGS -> {
+                                    when (settingsSubScreen) {
+                                        SettingsSubScreen.MAIN -> {
+                                            SettingsScreen(
+                                                customStorageDisplayPath = customStorageDisplayPath,
+                                                autoSaveToGallery = autoSaveToGallery,
+                                                totalStorageBytes = totalStorageBytes,
+                                                onSelectCustomFolderClick = { openDocumentTreeLauncher.launch(null) },
+                                                onResetToDefaultFolderClick = {
+                                                    coroutineScope.launch {
+                                                        settingsManager.resetToDefaultStorage()
+                                                        Toast.makeText(context, "Reset to default gallery storage", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                onToggleAutoSaveToGallery = { enabled ->
+                                                    coroutineScope.launch { settingsManager.setAutoSaveToGallery(enabled) }
+                                                },
+                                                onCleanCacheClick = {
+                                                    historyViewModel.triggerDiskCleanup()
+                                                    Toast.makeText(context, "Storage cache cleared", Toast.LENGTH_SHORT).show()
+                                                },
+                                                onPrivacyPolicyClick = { settingsSubScreen = SettingsSubScreen.PRIVACY_POLICY },
+                                                onAboutUsClick = { settingsSubScreen = SettingsSubScreen.ABOUT_US },
+                                                onBackClick = { currentTab = NavigationTab.DASHBOARD }
+                                            )
+                                        }
+                                        SettingsSubScreen.PRIVACY_POLICY -> {
+                                            PrivacyPolicyScreen(
+                                                onBackClick = { settingsSubScreen = SettingsSubScreen.MAIN }
+                                            )
+                                        }
+                                        SettingsSubScreen.ABOUT_US -> {
+                                            AboutUsScreen(
+                                                onBackClick = { settingsSubScreen = SettingsSubScreen.MAIN }
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
 
@@ -407,11 +531,8 @@ fun TapConvertApp() {
                                 result = state.result,
                                 record = state.record,
                                 onShareClick = { filePath ->
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "*/*"
-                                        putExtra(Intent.EXTRA_STREAM, filePath)
-                                    }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Converted File"))
+                                    val chooserIntent = ShareHelper.createShareChooserIntent(context, filePath)
+                                    context.startActivity(chooserIntent)
                                 },
                                 onFavoriteToggle = { id, fav -> mainViewModel.toggleFavorite(id, fav) },
                                 onDoneClick = { mainViewModel.resetToIdle() }
@@ -436,5 +557,3 @@ fun TapConvertApp() {
         }
     }
 }
-
-
