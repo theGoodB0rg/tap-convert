@@ -45,12 +45,20 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:model"))
     implementation(project(":core:analytics"))
+    implementation(project(":core:database"))
+    implementation(project(":core:ads"))
+    implementation(project(":feature:image-engine"))
+    implementation(project(":feature:pdf-engine"))
+    implementation(project(":feature:media-engine"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -82,7 +90,6 @@ dependencies {
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
-    testImplementation(libs.robolectric)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
