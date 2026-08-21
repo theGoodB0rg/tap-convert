@@ -27,9 +27,12 @@ include(":core:common")
 include(":core:model")
 include(":core:analytics")
 include(":core:testing")
+include(":core:database")
+include(":core:ads")
 include(":feature:image-engine")
 include(":feature:pdf-engine")
 include(":feature:media-engine")
+
 
 
 
