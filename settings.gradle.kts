@@ -28,4 +28,6 @@ include(":core:model")
 include(":core:analytics")
 include(":core:testing")
 include(":feature:image-engine")
+include(":feature:pdf-engine")
+
 

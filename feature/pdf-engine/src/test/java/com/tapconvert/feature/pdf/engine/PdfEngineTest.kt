@@ -1,0 +1,69 @@
+package com.tapconvert.feature.pdf.engine
+
+import app.cash.turbine.test
+import com.google.common.truth.Truth.assertThat
+import com.tapconvert.core.common.AppResult
+import com.tapconvert.core.model.ConversionError
+import com.tapconvert.core.model.ConversionRequest
+import com.tapconvert.core.model.ConversionType
+import com.tapconvert.core.model.MimeType
+import com.tapconvert.core.testing.FakeAnalyticsTracker
+import kotlinx.coroutines.test.runTest
+import org.junit.Test
+import java.io.File
+
+class PdfEngineTest {
+
+    private val fakeAnalytics = FakeAnalyticsTracker()
+    private val engine = DefaultPdfEngine(fakeAnalytics)
+    private val tempDir = File(System.getProperty("java.io.tmpdir"), "tapconvert_pdf_test_out")
+
+    @Test
+    fun `convertImagesToPdf emits error when source image does not exist and logs failed event`() = runTest {
+        val request = ConversionRequest(
+            sourceUris = listOf("file:///non_existent_folder/page1.jpg"),
+            conversionType = ConversionType.IMAGES_TO_PDF,
+            targetMimeType = MimeType.Document.PDF
+        )
+
+        engine.convertImagesToPdf(request, tempDir).test {
+            val p1 = awaitItem()
+            assertThat(p1.isProgress).isTrue()
+
+            val err = awaitItem()
+            assertThat(err.isError).isTrue()
+            val error = (err as AppResult.Error).throwable
+            assertThat(error).isInstanceOf(ConversionError.FileNotFound::class.java)
+
+            awaitComplete()
+        }
+
+        assertThat(fakeAnalytics.startedConversions).hasSize(1)
+        assertThat(fakeAnalytics.failedConversions).hasSize(1)
+        assertThat(fakeAnalytics.failedConversions[0].errorType).isEqualTo("FileNotFound")
+    }
+
+    @Test
+    fun `extractPdfToImages emits error when source PDF does not exist`() = runTest {
+        val request = ConversionRequest(
+            sourceUris = listOf("file:///non_existent_folder/doc.pdf"),
+            conversionType = ConversionType.PDF_TO_IMAGES,
+            targetMimeType = MimeType.Image.JPEG
+        )
+
+        engine.extractPdfToImages(request, tempDir).test {
+            val p1 = awaitItem()
+            assertThat(p1.isProgress).isTrue()
+
+            val err = awaitItem()
+            assertThat(err.isError).isTrue()
+            val error = (err as AppResult.Error).throwable
+            assertThat(error).isInstanceOf(ConversionError.FileNotFound::class.java)
+
+            awaitComplete()
+        }
+
+        assertThat(fakeAnalytics.startedConversions).hasSize(1)
+        assertThat(fakeAnalytics.failedConversions).hasSize(1)
+    }
+}
