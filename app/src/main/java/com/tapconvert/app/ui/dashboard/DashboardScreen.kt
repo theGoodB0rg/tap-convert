@@ -24,17 +24,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tapconvert.app.ui.theme.*
+import com.tapconvert.core.database.entity.ConversionRecordEntity
 import com.tapconvert.core.model.MediaCategory
 import com.tapconvert.core.model.Preset
 
 @Composable
 fun DashboardScreen(
+    records: List<ConversionRecordEntity> = emptyList(),
+    totalStorageBytes: Long = 0L,
     onCategoryClick: (MediaCategory) -> Unit,
     onPresetClick: (Preset) -> Unit,
+    onUniversalIntakeClick: () -> Unit = { onCategoryClick(MediaCategory.IMAGE) },
     onHistoryClick: () -> Unit,
     onFastPassClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val totalSavedBytes = records.sumOf { (it.originalSizeBytes - it.outputSizeBytes).coerceAtLeast(0L) }
+    val avgSavingsPercent = if (records.isNotEmpty()) {
+        (records.map { it.savingsPercentage }.average()).toInt().coerceIn(0, 100)
+    } else {
+        0
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -42,7 +53,7 @@ fun DashboardScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        // Hero Savings Metric Card
+        // Hero Savings Metric Card (Real Dynamic Storage Metrics)
         Card(
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -80,14 +91,14 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = "1.42 GB",
+                            text = formatBytes(totalSavedBytes),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = SavingsGreen,
                             letterSpacing = (-0.5).sp
                         )
                         Text(
-                            text = "Lightning fast & 100% offline",
+                            text = if (records.isEmpty()) "Ready for your 1st conversion" else "${records.size} conversions completed offline",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -98,7 +109,7 @@ fun DashboardScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = "84% Saved",
+                            text = if (records.isEmpty()) "100% Offline" else "$avgSavingsPercent% Saved",
                             color = SavingsGreen,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelSmall,
@@ -111,7 +122,7 @@ fun DashboardScreen(
 
         // Universal 1-Tap Intake Dropzone
         Card(
-            onClick = { onCategoryClick(MediaCategory.IMAGE) },
+            onClick = onUniversalIntakeClick,
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
@@ -426,4 +437,17 @@ private fun CategoryTile(
         }
     }
 }
+
+private fun formatBytes(bytes: Long): String {
+    if (bytes <= 0) return "0 MB"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    val gb = mb / 1024.0
+    return when {
+        gb >= 1.0 -> "%.2f GB".format(gb)
+        mb >= 1.0 -> "%.1f MB".format(mb)
+        else -> "%.0f KB".format(kb)
+    }
+}
+
 

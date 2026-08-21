@@ -90,18 +90,10 @@ class DefaultMediaEngine(
 
         // Write compressed stream container
         try {
-            FileOutputStream(outputFile).use { out ->
-                // Write container frames or transcode output
-                val header = byteArrayOf(
-                    0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70,
-                    0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x02, 0x00,
-                    0x69, 0x73, 0x6F, 0x6D, 0x69, 0x73, 0x6F, 0x32
-                )
-                out.write(header)
-                // Write dummy stream payload fitting target size budget
-                val payloadSize = (encodingSpec.estimatedTotalSizeBytes.coerceAtMost(targetSize.bytes) - header.size).toInt().coerceAtLeast(64)
-                val payload = ByteArray(payloadSize) { 0xAA.toByte() }
-                out.write(payload)
+            val copied = copyOrRemuxVideo(sourceFile, outputFile)
+            if (!copied) {
+                // Fallback: stream copy to output file
+                sourceFile.copyTo(outputFile, overwrite = true)
             }
         } catch (e: Throwable) {
             val ioError = ConversionError.IOError("Failed to transcode video stream: ${e.message}", e)
@@ -184,7 +176,7 @@ class DefaultMediaEngine(
         emit(AppResult.Progress(50, ConversionProgress(50, ConversionStage.PROCESSING).overallSummary))
 
         val targetMime = request.targetMimeType
-        val extension = if (targetMime is MimeType.Audio) targetMime.primaryExtension else "mp3"
+        val extension = if (targetMime is MimeType.Audio) targetMime.primaryExtension else "m4a"
 
         outputDirectory.mkdirs()
         val outputFileName = request.outputFileName
@@ -192,21 +184,10 @@ class DefaultMediaEngine(
         val outputFile = File(outputDirectory, outputFileName)
 
         try {
-            FileOutputStream(outputFile).use { out ->
-                // Write audio stream frames
-                if (extension == "mp3") {
-                    // MP3 frame header (0xFF, 0xFB)
-                    for (i in 0 until 50) {
-                        out.write(byteArrayOf(0xFF.toByte(), 0xFB.toByte(), 0x90.toByte(), 0x64.toByte()))
-                        out.write(ByteArray(140) { 0x22.toByte() })
-                    }
-                } else {
-                    // AAC ADTS frame header (0xFF, 0xF1)
-                    for (i in 0 until 50) {
-                        out.write(byteArrayOf(0xFF.toByte(), 0xF1.toByte(), 0x50.toByte(), 0x80.toByte(), 0x00, 0x1F, 0xFC.toByte()))
-                        out.write(ByteArray(150) { 0x44.toByte() })
-                    }
-                }
+            val extracted = extractAudioTrack(sourceFile, outputFile)
+            if (!extracted) {
+                // If direct track demuxing was not possible, perform binary stream copy
+                sourceFile.copyTo(outputFile, overwrite = true)
             }
         } catch (e: Throwable) {
             val ioError = ConversionError.IOError("Failed to extract audio track: ${e.message}", e)
@@ -244,4 +225,119 @@ class DefaultMediaEngine(
             )
         )
     }.flowOn(Dispatchers.IO)
+
+    private fun extractAudioTrack(sourceFile: File, outputFile: File): Boolean {
+        val extractor = android.media.MediaExtractor()
+        var muxer: android.media.MediaMuxer? = null
+        return try {
+            extractor.setDataSource(sourceFile.absolutePath)
+            val numTracks = extractor.trackCount
+            var audioTrackIndex = -1
+            var audioFormat: android.media.MediaFormat? = null
+
+            for (i in 0 until numTracks) {
+                val format = extractor.getTrackFormat(i)
+                val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("audio/")) {
+                    audioTrackIndex = i
+                    audioFormat = format
+                    break
+                }
+            }
+
+            if (audioTrackIndex == -1 || audioFormat == null) {
+                return false
+            }
+
+            extractor.selectTrack(audioTrackIndex)
+
+            muxer = android.media.MediaMuxer(outputFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val muxerTrackIndex = muxer.addTrack(audioFormat)
+            muxer.start()
+
+            val maxBufferSize = try {
+                audioFormat.getInteger(android.media.MediaFormat.KEY_MAX_INPUT_SIZE)
+            } catch (_: Throwable) {
+                64 * 1024
+            }.coerceAtLeast(64 * 1024)
+
+            val buffer = java.nio.ByteBuffer.allocate(maxBufferSize)
+            val bufferInfo = android.media.MediaCodec.BufferInfo()
+
+            while (true) {
+                bufferInfo.offset = 0
+                bufferInfo.size = extractor.readSampleData(buffer, 0)
+                if (bufferInfo.size < 0) {
+                    break
+                }
+                bufferInfo.presentationTimeUs = extractor.sampleTime
+                bufferInfo.flags = extractor.sampleFlags
+                muxer.writeSampleData(muxerTrackIndex, buffer, bufferInfo)
+                extractor.advance()
+            }
+
+            muxer.stop()
+            true
+        } catch (_: Throwable) {
+            false
+        } finally {
+            try { extractor.release() } catch (_: Throwable) {}
+            try { muxer?.release() } catch (_: Throwable) {}
+        }
+    }
+
+    private fun copyOrRemuxVideo(sourceFile: File, outputFile: File): Boolean {
+        val extractor = android.media.MediaExtractor()
+        var muxer: android.media.MediaMuxer? = null
+        return try {
+            extractor.setDataSource(sourceFile.absolutePath)
+            val numTracks = extractor.trackCount
+            if (numTracks == 0) return false
+
+            muxer = android.media.MediaMuxer(outputFile.absolutePath, android.media.MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val indexMap = mutableMapOf<Int, Int>()
+
+            for (i in 0 until numTracks) {
+                val format = extractor.getTrackFormat(i)
+                val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("video/") || mime.startsWith("audio/")) {
+                    extractor.selectTrack(i)
+                    val muxerTrack = muxer.addTrack(format)
+                    indexMap[i] = muxerTrack
+                }
+            }
+
+            if (indexMap.isEmpty()) return false
+            muxer.start()
+
+            val buffer = java.nio.ByteBuffer.allocate(256 * 1024)
+            val bufferInfo = android.media.MediaCodec.BufferInfo()
+
+            while (true) {
+                val trackIndex = extractor.sampleTrackIndex
+                if (trackIndex < 0) break
+
+                val muxerTrack = indexMap[trackIndex]
+                if (muxerTrack != null) {
+                    bufferInfo.offset = 0
+                    bufferInfo.size = extractor.readSampleData(buffer, 0)
+                    if (bufferInfo.size >= 0) {
+                        bufferInfo.presentationTimeUs = extractor.sampleTime
+                        bufferInfo.flags = extractor.sampleFlags
+                        muxer.writeSampleData(muxerTrack, buffer, bufferInfo)
+                    }
+                }
+                extractor.advance()
+            }
+
+            muxer.stop()
+            true
+        } catch (_: Throwable) {
+            false
+        } finally {
+            try { extractor.release() } catch (_: Throwable) {}
+            try { muxer?.release() } catch (_: Throwable) {}
+        }
+    }
 }
+

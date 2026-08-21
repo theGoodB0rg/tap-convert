@@ -1,6 +1,10 @@
 package com.tapconvert.app.ui
 
 import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,7 +21,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tapconvert.app.share.ShareIntentParser
 import com.tapconvert.app.ui.config.ConfigurationScreen
 import com.tapconvert.app.ui.dashboard.DashboardScreen
 import com.tapconvert.app.ui.history.HistoryScreen
@@ -27,9 +34,13 @@ import com.tapconvert.app.ui.result.ResultScreen
 import com.tapconvert.app.ui.theme.AccentAmber
 import com.tapconvert.app.ui.theme.TapConvertTheme
 import com.tapconvert.core.ads.AdReward
+import com.tapconvert.core.database.TapConvertDatabase
+import com.tapconvert.core.database.cleaner.LruDiskCleaner
+import com.tapconvert.core.database.repository.RoomConversionHistoryRepository
 import com.tapconvert.core.model.ConversionType
 import com.tapconvert.core.model.MediaCategory
 import com.tapconvert.core.model.MimeType
+import com.tapconvert.core.model.Preset
 import java.io.File
 
 enum class NavigationTab {
@@ -39,13 +50,33 @@ enum class NavigationTab {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TapConvertApp(
-    mainViewModel: MainViewModel = viewModel(),
-    historyViewModel: HistoryViewModel = viewModel()
-) {
+fun TapConvertApp() {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
     val isExpandedScreen = configuration.screenWidthDp >= 600
+
+    // Initialize Room SQLite Database & Repository
+    val repository = remember { RoomConversionHistoryRepository.create(context) }
+    val diskCleaner = remember {
+        LruDiskCleaner(
+            cacheDirectories = listOf(context.cacheDir, File(context.filesDir, "conversions")),
+            repository = repository
+        )
+    }
+
+    val mainViewModel: MainViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return MainViewModel(historyRepository = repository) as T
+        }
+    })
+
+    val historyViewModel: HistoryViewModel = viewModel(factory = object : ViewModelProvider.Factory {
+        @Suppress("UNCHECKED_CAST")
+        override fun <T : ViewModel> create(modelClass: Class<T>): T {
+            return HistoryViewModel(repository = repository, diskCleaner = diskCleaner) as T
+        }
+    })
 
     val uiState by mainViewModel.uiState.collectAsState()
     val adState by mainViewModel.adManager.state.collectAsState()
@@ -57,6 +88,83 @@ fun TapConvertApp(
 
     var currentTab by remember { mutableStateOf(NavigationTab.DASHBOARD) }
     var showFastPassDialog by remember { mutableStateOf(false) }
+
+    var pendingPreset by remember { mutableStateOf<Preset?>(null) }
+    var pendingCategory by remember { mutableStateOf<MediaCategory?>(null) }
+
+    // Helper to stage real picked media into working files
+    fun processPickedUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+
+        val stagingDir = File(context.cacheDir, "intake_staging").apply { mkdirs() }
+        val workingUris = mutableListOf<String>()
+        val fileNames = mutableListOf<String>()
+
+        for (uri in uris) {
+            val name = ShareIntentParser.resolveFileName(uri, context.contentResolver)
+            val dest = File(stagingDir, "${System.currentTimeMillis()}_$name")
+            try {
+                if (uri.scheme == "content") {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        dest.outputStream().use { output -> input.copyTo(output) }
+                    }
+                } else {
+                    val src = File(uri.path ?: uri.toString())
+                    if (src.exists()) src.copyTo(dest, overwrite = true)
+                }
+                if (dest.exists()) {
+                    workingUris.add("file://${dest.absolutePath}")
+                    fileNames.add(name)
+                }
+            } catch (_: Throwable) {}
+        }
+
+        if (workingUris.isEmpty()) return
+
+        val preset = pendingPreset
+        val category = pendingCategory
+        pendingPreset = null
+        pendingCategory = null
+
+        if (preset != null) {
+            mainViewModel.selectPreset(preset, workingUris)
+        } else if (category != null) {
+            when (category) {
+                MediaCategory.IMAGE -> mainViewModel.configureCustom(workingUris, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                MediaCategory.VIDEO -> mainViewModel.configureCustom(workingUris, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
+                MediaCategory.DOCUMENT -> mainViewModel.configureCustom(workingUris, ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
+                MediaCategory.AUDIO -> mainViewModel.configureCustom(workingUris, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+            }
+        } else {
+            val first = fileNames.firstOrNull()?.lowercase() ?: ""
+            when {
+                first.endsWith(".png") || first.endsWith(".jpg") || first.endsWith(".jpeg") || first.endsWith(".webp") || first.endsWith(".heic") ->
+                    mainViewModel.configureCustom(workingUris, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                first.endsWith(".mp4") || first.endsWith(".mkv") || first.endsWith(".mov") || first.endsWith(".webm") ->
+                    mainViewModel.configureCustom(workingUris, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
+                first.endsWith(".pdf") ->
+                    mainViewModel.configureCustom(workingUris, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
+                first.endsWith(".mp3") || first.endsWith(".m4a") || first.endsWith(".aac") || first.endsWith(".wav") ->
+                    mainViewModel.configureCustom(workingUris, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+                else ->
+                    mainViewModel.configureCustom(workingUris, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+            }
+        }
+    }
+
+    // Modern Android Photo & Video Picker (Multi-select)
+    val visualMediaPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickMultipleVisualMedia()
+    ) { uris ->
+        processPickedUris(uris)
+    }
+
+    // Storage Access Framework (SAF) Document / Audio Picker
+    val documentPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        processPickedUris(uris)
+    }
 
     // Interstitial consumption callback
     LaunchedEffect(shouldShowInterstitial) {
@@ -200,18 +308,58 @@ fun TapConvertApp(
                             when (currentTab) {
                                 NavigationTab.DASHBOARD -> {
                                     DashboardScreen(
+                                        records = historyRecords,
+                                        totalStorageBytes = totalStorageBytes,
                                         onCategoryClick = { category ->
-                                            val dummyUri = "file://${context.cacheDir.absolutePath}/sample"
+                                            pendingPreset = null
+                                            pendingCategory = category
                                             when (category) {
-                                                MediaCategory.IMAGE -> mainViewModel.configureCustom(listOf("$dummyUri.png"), ConversionType.IMAGE_COMPRESS, MimeType.Image.JPEG)
-                                                MediaCategory.VIDEO -> mainViewModel.configureCustom(listOf("$dummyUri.mp4"), ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
-                                                MediaCategory.DOCUMENT -> mainViewModel.configureCustom(listOf("$dummyUri.jpg"), ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
-                                                MediaCategory.AUDIO -> mainViewModel.configureCustom(listOf("$dummyUri.mp4"), ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+                                                MediaCategory.IMAGE -> {
+                                                    visualMediaPickerLauncher.launch(
+                                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                                    )
+                                                }
+                                                MediaCategory.VIDEO -> {
+                                                    visualMediaPickerLauncher.launch(
+                                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                                    )
+                                                }
+                                                MediaCategory.DOCUMENT -> {
+                                                    documentPickerLauncher.launch(arrayOf("application/pdf", "image/*"))
+                                                }
+                                                MediaCategory.AUDIO -> {
+                                                    documentPickerLauncher.launch(arrayOf("audio/*", "video/*"))
+                                                }
                                             }
                                         },
                                         onPresetClick = { preset ->
-                                            val dummyUri = "file://${context.cacheDir.absolutePath}/sample_input"
-                                            mainViewModel.selectPreset(preset, listOf(dummyUri))
+                                            pendingPreset = preset
+                                            pendingCategory = null
+                                            when (preset.category) {
+                                                MediaCategory.IMAGE -> {
+                                                    visualMediaPickerLauncher.launch(
+                                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                                    )
+                                                }
+                                                MediaCategory.VIDEO -> {
+                                                    visualMediaPickerLauncher.launch(
+                                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
+                                                    )
+                                                }
+                                                MediaCategory.DOCUMENT -> {
+                                                    documentPickerLauncher.launch(arrayOf("application/pdf", "image/*"))
+                                                }
+                                                MediaCategory.AUDIO -> {
+                                                    documentPickerLauncher.launch(arrayOf("audio/*", "video/*"))
+                                                }
+                                            }
+                                        },
+                                        onUniversalIntakeClick = {
+                                            pendingPreset = null
+                                            pendingCategory = null
+                                            visualMediaPickerLauncher.launch(
+                                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                                            )
                                         },
                                         onHistoryClick = { currentTab = NavigationTab.HISTORY },
                                         onFastPassClick = { showFastPassDialog = true }
@@ -224,7 +372,8 @@ fun TapConvertApp(
                                         onlyFavoritesFilter = onlyFavoritesFilter,
                                         onToggleFavoritesFilter = { historyViewModel.toggleFavoritesFilter() },
                                         onToggleFavorite = { id, fav -> historyViewModel.toggleFavorite(id, fav) },
-                                        onDeleteRecord = { id -> historyViewModel.deleteRecord(id) }
+                                        onDeleteRecord = { id -> historyViewModel.deleteRecord(id) },
+                                        onCleanCacheClick = { historyViewModel.triggerDiskCleanup() }
                                     )
                                 }
                             }
@@ -287,4 +436,5 @@ fun TapConvertApp(
         }
     }
 }
+
 

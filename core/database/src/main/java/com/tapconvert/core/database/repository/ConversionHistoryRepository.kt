@@ -82,3 +82,39 @@ class InMemoryConversionHistoryRepository : ConversionHistoryRepository {
         updateFlow()
     }
 }
+
+class RoomConversionHistoryRepository(
+    private val dao: com.tapconvert.core.database.dao.ConversionDao
+) : ConversionHistoryRepository {
+
+    override fun getAll(): Flow<List<ConversionRecordEntity>> = dao.getAll()
+
+    override suspend fun getById(id: String): ConversionRecordEntity? = dao.getById(id)
+
+    override suspend fun save(record: ConversionRecordEntity): Long = dao.insert(record)
+
+    override suspend fun saveAll(records: List<ConversionRecordEntity>) = dao.insertAll(records)
+
+    override suspend fun deleteById(id: String): Boolean = dao.deleteById(id) > 0
+
+    override suspend fun setFavorited(id: String, isFavorited: Boolean): Boolean = dao.setFavorited(id, isFavorited) > 0
+
+    override suspend fun getExpiredNonFavorited(olderThanTimestamp: Long): List<ConversionRecordEntity> =
+        dao.getExpiredNonFavorited(olderThanTimestamp)
+
+    override suspend fun deleteExpiredNonFavorited(olderThanTimestamp: Long): Int =
+        dao.deleteExpiredNonFavorited(olderThanTimestamp)
+
+    override fun getTotalStorageUsage(): Flow<Long> = dao.getTotalStorageUsage().map { it ?: 0L }
+
+    override suspend fun clearAll() = dao.clearAll()
+
+    companion object {
+        fun create(context: android.content.Context): ConversionHistoryRepository {
+            val db = com.tapconvert.core.database.TapConvertDatabase.getInstance(context)
+            return RoomConversionHistoryRepository(db.conversionDao())
+        }
+    }
+}
+
+

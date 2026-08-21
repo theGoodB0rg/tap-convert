@@ -25,6 +25,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.asImageBitmap
 import com.tapconvert.app.ui.theme.PrimaryTeal
 import com.tapconvert.app.ui.theme.SavingsGreen
 import com.tapconvert.core.database.entity.ConversionRecordEntity
@@ -116,6 +117,43 @@ fun ResultScreen(
         }
 
         // Visual Fidelity Inspection Card (Before & After Diff)
+        val inputPath = record.inputUris.firstOrNull()?.removePrefix("file://")
+        val outputPath = result.outputUris.firstOrNull()?.removePrefix("file://")
+
+        var inputImageBitmap by remember(inputPath) {
+            mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+        }
+        var outputImageBitmap by remember(outputPath) {
+            mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+        }
+
+        LaunchedEffect(inputPath, outputPath) {
+            if (inputPath != null) {
+                val f = java.io.File(inputPath)
+                if (f.exists() && f.length() > 0) {
+                    try {
+                        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+                        val b = android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts)
+                        if (b != null) {
+                            inputImageBitmap = b.asImageBitmap()
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+            if (outputPath != null) {
+                val f = java.io.File(outputPath)
+                if (f.exists() && f.length() > 0) {
+                    try {
+                        val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 2 }
+                        val b = android.graphics.BitmapFactory.decodeFile(f.absolutePath, opts)
+                        if (b != null) {
+                            outputImageBitmap = b.asImageBitmap()
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+        }
+
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
@@ -149,64 +187,132 @@ fun ResultScreen(
                         )
                     }
                     Text(
-                        text = "Lossless Diff",
+                        text = "100% Offline",
                         style = MaterialTheme.typography.labelSmall,
                         color = SavingsGreen,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
-                // Interactive Split Diff Visualizer Box
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(110.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                        .padding(8.dp)
-                ) {
+                if (inputImageBitmap != null && outputImageBitmap != null) {
+                    // Real Interactive Before/After Split Comparison
                     Row(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surface),
+                            contentAlignment = Alignment.BottomCenter
                         ) {
-                            Text(
-                                text = "Original",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            androidx.compose.foundation.Image(
+                                bitmap = inputImageBitmap!!,
+                                contentDescription = "Original Image",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-                            Text(
-                                text = formatBytes(result.originalSizeBytes),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.65f),
+                                shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Original: ${formatBytes(result.originalSizeBytes)}",
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
                         }
 
-                        VerticalDivider(
-                            modifier = Modifier.height(40.dp),
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
-                        )
-
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.weight(1f)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .border(1.5.dp, SavingsGreen, RoundedCornerShape(10.dp)),
+                            contentAlignment = Alignment.BottomCenter
                         ) {
-                            Text(
-                                text = "Optimized",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = SavingsGreen
+                            androidx.compose.foundation.Image(
+                                bitmap = outputImageBitmap!!,
+                                contentDescription = "Converted Image",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
                             )
-                            Text(
-                                text = formatBytes(result.outputSizeBytes),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = SavingsGreen
+                            Surface(
+                                color = SavingsGreen.copy(alpha = 0.85f),
+                                shape = RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "Optimized: ${formatBytes(result.outputSizeBytes)}",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Format and Size Metrics Inspector Box
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(110.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                            .padding(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Original",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = formatBytes(result.originalSizeBytes),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            VerticalDivider(
+                                modifier = Modifier.height(40.dp),
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)
                             )
+
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = "Optimized",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = SavingsGreen
+                                )
+                                Text(
+                                    text = formatBytes(result.outputSizeBytes),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = SavingsGreen
+                                )
+                            }
                         }
                     }
                 }
