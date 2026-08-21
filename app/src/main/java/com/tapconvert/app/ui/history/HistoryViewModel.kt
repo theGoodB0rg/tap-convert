@@ -6,16 +6,21 @@ import com.tapconvert.core.database.cleaner.LruDiskCleaner
 import com.tapconvert.core.database.entity.ConversionRecordEntity
 import com.tapconvert.core.database.repository.ConversionHistoryRepository
 import com.tapconvert.core.database.repository.InMemoryConversionHistoryRepository
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HistoryViewModel(
     private val repository: ConversionHistoryRepository = InMemoryConversionHistoryRepository(),
-    private val diskCleaner: LruDiskCleaner? = null
+    private val diskCleaner: LruDiskCleaner? = null,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val mainDispatcher: CoroutineDispatcher = Dispatchers.Main
 ) : ViewModel() {
 
     private val _onlyFavoritesFilter = MutableStateFlow(false)
@@ -36,26 +41,38 @@ class HistoryViewModel(
     }
 
     fun toggleFavorite(recordId: String, isFavorited: Boolean) {
-        viewModelScope.launch {
+        viewModelScope.launch(mainDispatcher) {
             repository.setFavorited(recordId, isFavorited)
         }
     }
 
     fun deleteRecord(recordId: String) {
-        viewModelScope.launch {
-            repository.deleteById(recordId)
+        viewModelScope.launch(ioDispatcher) {
+            if (diskCleaner != null) {
+                diskCleaner.deleteRecordWithFiles(recordId)
+            } else {
+                repository.deleteById(recordId)
+            }
         }
     }
 
     fun clearAllHistory() {
-        viewModelScope.launch {
-            repository.clearAll()
+        viewModelScope.launch(ioDispatcher) {
+            if (diskCleaner != null) {
+                diskCleaner.performManualCachePurge(protectFavorites = false)
+            } else {
+                repository.clearAll()
+            }
         }
     }
 
-    fun triggerDiskCleanup() {
-        viewModelScope.launch {
-            diskCleaner?.performFullCleanup()
+    fun triggerDiskCleanup(onComplete: ((LruDiskCleaner.CleanupReport) -> Unit)? = null) {
+        viewModelScope.launch(ioDispatcher) {
+            val report = diskCleaner?.performManualCachePurge(protectFavorites = true)
+                ?: LruDiskCleaner.CleanupReport(0, 0L)
+            withContext(mainDispatcher) {
+                onComplete?.invoke(report)
+            }
         }
     }
 }

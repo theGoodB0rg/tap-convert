@@ -1,5 +1,6 @@
 package com.tapconvert.core.database.cleaner
 
+import com.tapconvert.core.database.entity.ConversionRecordEntity
 import com.tapconvert.core.database.repository.ConversionHistoryRepository
 import java.io.File
 
@@ -14,6 +15,93 @@ class LruDiskCleaner(
         val filesDeleted: Int,
         val bytesReclaimed: Long
     )
+
+    /**
+     * Explicit on-demand cache & non-favorited history purge.
+     * 1. Deletes physical output files of non-favorited records and purges records from DB.
+     * 2. Recursively purges all temporary files in cacheDirectories (including intake_staging/), while protecting favorited output files.
+     */
+    suspend fun performManualCachePurge(protectFavorites: Boolean = true): CleanupReport {
+        var totalDeleted = 0
+        var totalReclaimed = 0L
+
+        val protectedPaths = if (protectFavorites && repository != null) {
+            repository.getFavorited().flatMap { it.outputUris }
+                .map { File(it.removePrefix("file://")).canonicalPath }
+                .toSet()
+        } else {
+            emptySet()
+        }
+
+        // Step 1: Delete output files from database records
+        if (repository != null) {
+            val recordsToDelete = if (protectFavorites) {
+                repository.getNonFavorited()
+            } else {
+                repository.getNonFavorited()
+            }
+
+            for (record in recordsToDelete) {
+                for (uri in record.outputUris) {
+                    val file = File(uri.removePrefix("file://"))
+                    if (file.exists() && file.isFile && file.canonicalPath !in protectedPaths) {
+                        val len = file.length()
+                        if (file.delete()) {
+                            totalDeleted++
+                            totalReclaimed += len
+                        }
+                    }
+                }
+            }
+
+            if (protectFavorites) {
+                repository.deleteNonFavorited()
+            } else {
+                repository.clearAll()
+            }
+        }
+
+        // Step 2: Recursively clean all cache and intermediate directories
+        for (dir in cacheDirectories) {
+            if (dir.exists() && dir.isDirectory) {
+                val files = dir.walkBottomUp()
+                    .filter { it.isFile }
+                    .toList()
+
+                for (file in files) {
+                    if (file.canonicalPath in protectedPaths) {
+                        continue // Skip favorited files
+                    }
+                    val len = file.length()
+                    if (file.delete()) {
+                        totalDeleted++
+                        totalReclaimed += len
+                    }
+                }
+            }
+        }
+
+        return CleanupReport(totalDeleted, totalReclaimed)
+    }
+
+    /**
+     * Delete physical files associated with a single record before removing from repository.
+     */
+    suspend fun deleteRecordWithFiles(recordId: String): Boolean {
+        if (repository != null) {
+            val record = repository.getById(recordId)
+            if (record != null) {
+                for (uri in record.outputUris) {
+                    val file = File(uri.removePrefix("file://"))
+                    if (file.exists() && file.isFile) {
+                        file.delete()
+                    }
+                }
+            }
+            return repository.deleteById(recordId)
+        }
+        return false
+    }
 
     /**
      * Evicts files older than maxAgeMs and files exceeding maxStorageBudgetBytes.
@@ -59,8 +147,11 @@ class LruDiskCleaner(
 
         val allFiles = cacheDirectories
             .filter { it.exists() && it.isDirectory }
-            .flatMap { it.listFiles()?.toList().orEmpty() }
-            .filter { it.isFile }
+            .flatMap { dir ->
+                dir.walkBottomUp()
+                    .filter { it.isFile }
+                    .toList()
+            }
             .sortedBy { it.lastModified() } // Oldest first
 
         var currentTotalSize = allFiles.sumOf { it.length() }

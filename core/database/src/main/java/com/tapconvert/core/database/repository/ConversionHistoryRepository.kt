@@ -17,6 +17,9 @@ interface ConversionHistoryRepository {
     suspend fun setFavorited(id: String, isFavorited: Boolean): Boolean
     suspend fun getExpiredNonFavorited(olderThanTimestamp: Long): List<ConversionRecordEntity>
     suspend fun deleteExpiredNonFavorited(olderThanTimestamp: Long): Int
+    suspend fun getFavorited(): List<ConversionRecordEntity>
+    suspend fun getNonFavorited(): List<ConversionRecordEntity>
+    suspend fun deleteNonFavorited(): Int
     fun getTotalStorageUsage(): Flow<Long>
     suspend fun clearAll()
 }
@@ -73,6 +76,27 @@ class InMemoryConversionHistoryRepository : ConversionHistoryRepository {
         return expiredKeys.size
     }
 
+    override suspend fun getFavorited(): List<ConversionRecordEntity> {
+        return storage.values
+            .filter { it.isFavorited }
+            .sortedBy { it.createdAt }
+    }
+
+    override suspend fun getNonFavorited(): List<ConversionRecordEntity> {
+        return storage.values
+            .filter { !it.isFavorited }
+            .sortedBy { it.createdAt }
+    }
+
+    override suspend fun deleteNonFavorited(): Int {
+        val nonFavKeys = storage.values
+            .filter { !it.isFavorited }
+            .map { it.id }
+        nonFavKeys.forEach { storage.remove(it) }
+        if (nonFavKeys.isNotEmpty()) updateFlow()
+        return nonFavKeys.size
+    }
+
     override fun getTotalStorageUsage(): Flow<Long> {
         return _recordsFlow.map { list -> list.sumOf { it.outputSizeBytes } }
     }
@@ -104,6 +128,12 @@ class RoomConversionHistoryRepository(
 
     override suspend fun deleteExpiredNonFavorited(olderThanTimestamp: Long): Int =
         dao.deleteExpiredNonFavorited(olderThanTimestamp)
+
+    override suspend fun getFavorited(): List<ConversionRecordEntity> = dao.getFavorited()
+
+    override suspend fun getNonFavorited(): List<ConversionRecordEntity> = dao.getNonFavorited()
+
+    override suspend fun deleteNonFavorited(): Int = dao.deleteNonFavorited()
 
     override fun getTotalStorageUsage(): Flow<Long> = dao.getTotalStorageUsage().map { it ?: 0L }
 

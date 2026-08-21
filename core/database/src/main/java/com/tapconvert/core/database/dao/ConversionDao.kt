@@ -34,6 +34,15 @@ interface ConversionDao {
     @Query("DELETE FROM conversion_records WHERE is_favorited = 0 AND created_at < :olderThanTimestamp")
     suspend fun deleteExpiredNonFavorited(olderThanTimestamp: Long): Int
 
+    @Query("SELECT * FROM conversion_records WHERE is_favorited = 1")
+    suspend fun getFavorited(): List<ConversionRecordEntity>
+
+    @Query("SELECT * FROM conversion_records WHERE is_favorited = 0 ORDER BY created_at ASC")
+    suspend fun getNonFavorited(): List<ConversionRecordEntity>
+
+    @Query("DELETE FROM conversion_records WHERE is_favorited = 0")
+    suspend fun deleteNonFavorited(): Int
+
     @Query("SELECT SUM(output_size_bytes) FROM conversion_records")
     fun getTotalStorageUsage(): Flow<Long?>
 

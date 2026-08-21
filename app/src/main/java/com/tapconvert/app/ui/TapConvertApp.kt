@@ -574,7 +574,17 @@ fun TapConvertApp() {
                                         onToggleFavoritesFilter = { historyViewModel.toggleFavoritesFilter() },
                                         onToggleFavorite = { id, fav -> historyViewModel.toggleFavorite(id, fav) },
                                         onDeleteRecord = { id -> historyViewModel.deleteRecord(id) },
-                                        onCleanCacheClick = { historyViewModel.triggerDiskCleanup() }
+                                        onCleanCacheClick = {
+                                            historyViewModel.triggerDiskCleanup { report ->
+                                                val msg = if (report.filesDeleted > 0 || report.bytesReclaimed > 0L) {
+                                                    val mb = report.bytesReclaimed / (1024.0 * 1024.0)
+                                                    "Freed %.1f MB (%d files)".format(mb, report.filesDeleted)
+                                                } else {
+                                                    "Storage cache is clean"
+                                                }
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
                                     )
                                 }
                                 NavigationTab.SETTINGS -> {
@@ -595,8 +605,15 @@ fun TapConvertApp() {
                                                     coroutineScope.launch { settingsManager.setAutoSaveToGallery(enabled) }
                                                 },
                                                 onCleanCacheClick = {
-                                                    historyViewModel.triggerDiskCleanup()
-                                                    Toast.makeText(context, "Storage cache cleared", Toast.LENGTH_SHORT).show()
+                                                    historyViewModel.triggerDiskCleanup { report ->
+                                                        val msg = if (report.filesDeleted > 0 || report.bytesReclaimed > 0L) {
+                                                            val mb = report.bytesReclaimed / (1024.0 * 1024.0)
+                                                            "Freed %.1f MB (%d files)".format(mb, report.filesDeleted)
+                                                        } else {
+                                                            "Storage cache is clean"
+                                                        }
+                                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                    }
                                                 },
                                                 onPrivacyPolicyClick = { settingsSubScreen = SettingsSubScreen.PRIVACY_POLICY },
                                                 onAboutUsClick = { settingsSubScreen = SettingsSubScreen.ABOUT_US },
