@@ -9,8 +9,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
@@ -21,12 +24,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tapconvert.app.ui.theme.PrimaryTeal
 import com.tapconvert.app.ui.theme.SavingsGreen
 import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.ConversionRequest
+import com.tapconvert.core.model.ConversionType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,10 +41,15 @@ fun ConfigurationScreen(
     onQualityChange: (ConversionQuality) -> Unit,
     onConvertClick: () -> Unit,
     onBackClick: () -> Unit,
+    onRemoveSourceUri: (Int) -> Unit = {},
+    onReorderSourceUris: (Int, Int) -> Unit = { _, _ -> },
+    onAddPhotosClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var sliderPosition by remember { mutableFloatStateOf(request.quality.qualityPercent.toFloat()) }
     var showAdvanced by remember { mutableStateOf(false) }
+
+    val isPdfOrMultiFile = request.conversionType == ConversionType.IMAGES_TO_PDF || sourceFileNames.size > 1
 
     // Live savings estimate formula based on quality percent
     val estimatedSavingsPct = remember(sliderPosition) {
@@ -58,10 +68,10 @@ fun ConfigurationScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Conversion Options",
+                        text = if (request.conversionType == ConversionType.IMAGES_TO_PDF) "Photos to PDF Setup" else "Conversion Options",
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        overflow = TextOverflow.Ellipsis
                     )
                 },
                 navigationIcon = {
@@ -90,12 +100,18 @@ fun ConfigurationScreen(
                     ) {
                         val activePreset = request.preset
                         Text(
-                            text = if (activePreset != null) "Convert via ${activePreset.name}" else "Start Offline Conversion",
+                            text = if (activePreset != null) {
+                                "Convert via ${activePreset.name}"
+                            } else if (request.conversionType == ConversionType.IMAGES_TO_PDF) {
+                                "Create PDF (${sourceFileNames.size} pages)"
+                            } else {
+                                "Start Offline Conversion"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             softWrap = false,
-                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -111,7 +127,7 @@ fun ConfigurationScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Selected Files Card
+            // Selected Files / Image Tray Card
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
@@ -121,47 +137,126 @@ fun ConfigurationScreen(
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "Source Input (${sourceFileNames.size} files)",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
+                        Column {
                             Text(
-                                text = request.conversionType.name.replace("_", " "),
-                                style = MaterialTheme.typography.labelSmall,
+                                text = if (request.conversionType == ConversionType.IMAGES_TO_PDF) "PDF Pages (${sourceFileNames.size})" else "Source Input (${sourceFileNames.size})",
+                                style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                color = MaterialTheme.colorScheme.primary
                             )
+                            if (request.conversionType == ConversionType.IMAGES_TO_PDF) {
+                                Text(
+                                    text = "Reorder or remove pages before merging",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (request.conversionType == ConversionType.IMAGES_TO_PDF) {
+                            FilledTonalButton(
+                                onClick = onAddPhotosClick,
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add", style = MaterialTheme.typography.labelSmall)
+                            }
                         }
                     }
 
-                    sourceFileNames.take(3).forEach { name ->
-                        Text(
-                            text = "• $name",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    if (sourceFileNames.size > 3) {
-                        Text(
-                            text = "and ${sourceFileNames.size - 3} more files...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    // Multi-Item Page Tray
+                    sourceFileNames.forEachIndexed { index, name ->
+                        Surface(
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = if (request.conversionType == ConversionType.IMAGES_TO_PDF) "P${index + 1}" else "#${index + 1}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+
+                                Text(
+                                    text = name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                if (isPdfOrMultiFile && sourceFileNames.size > 1) {
+                                    // Move Up
+                                    IconButton(
+                                        onClick = { onReorderSourceUris(index, index - 1) },
+                                        enabled = index > 0,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowUpward,
+                                            contentDescription = "Move Up",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    // Move Down
+                                    IconButton(
+                                        onClick = { onReorderSourceUris(index, index + 1) },
+                                        enabled = index < sourceFileNames.lastIndex,
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDownward,
+                                            contentDescription = "Move Down",
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                // Delete
+                                IconButton(
+                                    onClick = { onRemoveSourceUri(index) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Remove",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -372,7 +467,7 @@ fun ConfigurationScreen(
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
-                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                         Icon(
@@ -412,4 +507,3 @@ fun ConfigurationScreen(
         }
     }
 }
-

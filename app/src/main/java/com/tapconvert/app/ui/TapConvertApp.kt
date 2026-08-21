@@ -1,8 +1,10 @@
 package com.tapconvert.app.ui
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -112,9 +114,37 @@ fun TapConvertApp() {
     var currentTab by remember { mutableStateOf(NavigationTab.DASHBOARD) }
     var settingsSubScreen by remember { mutableStateOf(SettingsSubScreen.MAIN) }
     var showFastPassDialog by remember { mutableStateOf(false) }
+    var showExitDialog by remember { mutableStateOf(false) }
+    var showCancelProcessingDialog by remember { mutableStateOf(false) }
 
     var pendingPreset by remember { mutableStateOf<Preset?>(null) }
     var pendingCategory by remember { mutableStateOf<MediaCategory?>(null) }
+
+    // Layered BackHandler Architecture
+    // 1. Settings sub-screens
+    BackHandler(enabled = settingsSubScreen != SettingsSubScreen.MAIN) {
+        settingsSubScreen = SettingsSubScreen.MAIN
+    }
+
+    // 2. Non-dashboard tabs (History / Settings)
+    BackHandler(enabled = uiState is ConversionUiState.Idle && currentTab != NavigationTab.DASHBOARD && settingsSubScreen == SettingsSubScreen.MAIN) {
+        currentTab = NavigationTab.DASHBOARD
+    }
+
+    // 3. Configuration, Success, or Error states -> Reset to Idle
+    BackHandler(enabled = uiState is ConversionUiState.Configuring || uiState is ConversionUiState.Success || uiState is ConversionUiState.Error) {
+        mainViewModel.resetToIdle()
+    }
+
+    // 4. In-flight processing state -> prompt cancel confirmation
+    BackHandler(enabled = uiState is ConversionUiState.Processing) {
+        showCancelProcessingDialog = true
+    }
+
+    // 5. Root Dashboard -> prompt exit confirmation dialog
+    BackHandler(enabled = uiState is ConversionUiState.Idle && currentTab == NavigationTab.DASHBOARD && settingsSubScreen == SettingsSubScreen.MAIN) {
+        showExitDialog = true
+    }
 
     // Helper to stage real picked media into working files
     fun processPickedUris(uris: List<Uri>) {
@@ -144,6 +174,11 @@ fun TapConvertApp() {
         }
 
         if (workingUris.isEmpty()) return
+
+        if (uiState is ConversionUiState.Configuring) {
+            mainViewModel.addSourceUris(workingUris)
+            return
+        }
 
         val preset = pendingPreset
         val category = pendingCategory
@@ -238,7 +273,7 @@ fun TapConvertApp() {
     }
 
     TapConvertTheme {
-        // Fast Pass Monetization Dialog
+        // Fast Pass & Pro Monetization Dialog
         if (showFastPassDialog) {
             AlertDialog(
                 onDismissRequest = { showFastPassDialog = false },
@@ -252,34 +287,114 @@ fun TapConvertApp() {
                 },
                 title = {
                     Text(
-                        text = "TapConvert Fast-Pass",
+                        text = if (adState.isPro) "TapConvert Pro Active" else "Unlock TapConvert Pro",
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "⚡ Unlimited Batch Conversions (50+ files)\n⚡ Lightning Fast Offline Conversion\n⚡ 100% Ad-Free for 24 Hours",
+                            text = "⚡ Unlimited Batch Conversions (500+ files)\n⚡ Lightning Fast Offline Transcoding\n⚡ 100% Ad-Free Permanent Experience\n⚡ Custom Cloud & Storage Output",
                             style = MaterialTheme.typography.bodyMedium
                         )
+                        if (!adState.isPro) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Button(
+                                onClick = {
+                                    mainViewModel.purchasePro(com.tapconvert.core.ads.SubscriptionPlan.Annual)
+                                    showFastPassDialog = false
+                                    Toast.makeText(context, "Upgraded to TapConvert Pro Annual!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Text("Upgrade to Pro Annual ($9.99/yr)", maxLines = 1, softWrap = false)
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    mainViewModel.purchasePro(com.tapconvert.core.ads.SubscriptionPlan.Monthly)
+                                    showFastPassDialog = false
+                                    Toast.makeText(context, "Upgraded to TapConvert Pro Monthly!", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Upgrade to Pro Monthly ($0.99/mo)", maxLines = 1, softWrap = false)
+                            }
+                        }
                     }
                 },
                 confirmButton = {
-                    Button(
-                        onClick = {
-                            mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
-                            showFastPassDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentAmber)
-                    ) {
-                        Text("Watch 1 Short Video (Free 24h)", color = MaterialTheme.colorScheme.surface, maxLines = 1, softWrap = false)
+                    if (!adState.isPro) {
+                        FilledTonalButton(
+                            onClick = {
+                                mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+                                showFastPassDialog = false
+                            }
+                        ) {
+                            Text("Free 24h Pass (Watch Ad)", maxLines = 1, softWrap = false)
+                        }
+                    } else {
+                        Button(onClick = { showFastPassDialog = false }) {
+                            Text("Done", maxLines = 1, softWrap = false)
+                        }
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showFastPassDialog = false }) {
-                        Text("Maybe Later", maxLines = 1, softWrap = false)
+                    if (!adState.isPro) {
+                        TextButton(onClick = { showFastPassDialog = false }) {
+                            Text("Maybe Later", maxLines = 1, softWrap = false)
+                        }
+                    }
+                }
+            )
+        }
+
+        // Exit Confirmation Dialog
+        if (showExitDialog) {
+            AlertDialog(
+                onDismissRequest = { showExitDialog = false },
+                title = { Text("Exit TapConvert?", fontWeight = FontWeight.Bold) },
+                text = { Text("Are you sure you want to close the app?") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showExitDialog = false
+                            (context as? Activity)?.finish()
+                        }
+                    ) {
+                        Text("Exit", maxLines = 1, softWrap = false)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showExitDialog = false }) {
+                        Text("Cancel", maxLines = 1, softWrap = false)
+                    }
+                }
+            )
+        }
+
+        // Cancel Active Processing Confirmation Dialog
+        if (showCancelProcessingDialog) {
+            AlertDialog(
+                onDismissRequest = { showCancelProcessingDialog = false },
+                title = { Text("Cancel Active Conversion?", fontWeight = FontWeight.Bold) },
+                text = { Text("Your media is currently being converted. Canceling will stop processing and discard incomplete output.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showCancelProcessingDialog = false
+                            mainViewModel.cancelConversion()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Stop Conversion", maxLines = 1, softWrap = false)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showCancelProcessingDialog = false }) {
+                        Text("Keep Converting", maxLines = 1, softWrap = false)
                     }
                 }
             )
@@ -512,7 +627,14 @@ fun TapConvertApp() {
                                     val outDir = File(context.filesDir, "conversions")
                                     mainViewModel.startConversion(outDir)
                                 },
-                                onBackClick = { mainViewModel.resetToIdle() }
+                                onBackClick = { mainViewModel.resetToIdle() },
+                                onRemoveSourceUri = { index -> mainViewModel.removeSourceUri(index) },
+                                onReorderSourceUris = { from, to -> mainViewModel.reorderSourceUris(from, to) },
+                                onAddPhotosClick = {
+                                    visualMediaPickerLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }
                             )
                         }
 

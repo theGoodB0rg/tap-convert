@@ -15,6 +15,7 @@ interface AdManager {
     fun onBannerImpression()
     fun grantReward(reward: AdReward, currentTimeMs: Long = System.currentTimeMillis())
     fun setAdFree(isAdFree: Boolean)
+    fun setPro(isPro: Boolean, tier: SubscriptionTier = if (isPro) SubscriptionTier.PRO_ANNUAL else SubscriptionTier.FREE)
     fun resetSession()
 }
 
@@ -28,7 +29,7 @@ class DefaultAdManager(
 
     override fun shouldShowInterstitial(currentTimeMs: Long): Boolean {
         val current = _state.value
-        if (current.isAdFree) return false
+        if (current.isEffectiveAdFree) return false
         if (current.sessionConversionCount < config.minConversionsBeforeFirstInterstitial) return false
         if (current.sessionInterstitialCount >= config.maxInterstitialsPerSession) return false
 
@@ -78,6 +79,10 @@ class DefaultAdManager(
 
     override fun setAdFree(isAdFree: Boolean) {
         _state.update { it.copy(isAdFree = isAdFree) }
+    }
+
+    override fun setPro(isPro: Boolean, tier: SubscriptionTier) {
+        _state.update { it.copy(isPro = isPro, subscriptionTier = tier) }
     }
 
     override fun resetSession() {

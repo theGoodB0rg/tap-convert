@@ -81,4 +81,54 @@ class MainViewModelTest {
         assertThat(adManager.state.value.isBatchModeUnlocked()).isTrue()
         assertThat(fakeAnalytics.rewardsGranted).hasSize(1)
     }
+
+    @Test
+    fun `removeSourceUri removes element and updates state`() {
+        viewModel.configureCustom(
+            sourceUris = listOf("file:///p1.jpg", "file:///p2.jpg", "file:///p3.jpg"),
+            conversionType = com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF,
+            targetMimeType = com.tapconvert.core.model.MimeType.Document.PDF
+        )
+
+        viewModel.removeSourceUri(1) // Remove p2.jpg
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.sourceUris).containsExactly("file:///p1.jpg", "file:///p3.jpg").inOrder()
+        assertThat(state.sourceFileNames).containsExactly("p1.jpg", "p3.jpg").inOrder()
+    }
+
+    @Test
+    fun `removeSourceUri on last remaining item resets state to Idle`() {
+        viewModel.selectPreset(Preset.GovPassport200KB, listOf("file:///single.jpg"))
+        viewModel.removeSourceUri(0)
+        assertThat(viewModel.uiState.value).isEqualTo(ConversionUiState.Idle)
+    }
+
+    @Test
+    fun `addSourceUris appends new files to active configuration`() {
+        viewModel.configureCustom(
+            sourceUris = listOf("file:///p1.jpg"),
+            conversionType = com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF,
+            targetMimeType = com.tapconvert.core.model.MimeType.Document.PDF
+        )
+
+        viewModel.addSourceUris(listOf("file:///p2.jpg", "file:///p3.jpg"))
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.sourceUris).containsExactly("file:///p1.jpg", "file:///p2.jpg", "file:///p3.jpg").inOrder()
+        assertThat(state.sourceFileNames).containsExactly("p1.jpg", "p2.jpg", "p3.jpg").inOrder()
+    }
+
+    @Test
+    fun `reorderSourceUris changes element ordering correctly`() {
+        viewModel.configureCustom(
+            sourceUris = listOf("file:///p1.jpg", "file:///p2.jpg", "file:///p3.jpg"),
+            conversionType = com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF,
+            targetMimeType = com.tapconvert.core.model.MimeType.Document.PDF
+        )
+
+        viewModel.reorderSourceUris(0, 2) // Move p1.jpg to the end
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.sourceUris).containsExactly("file:///p2.jpg", "file:///p3.jpg", "file:///p1.jpg").inOrder()
+        assertThat(state.sourceFileNames).containsExactly("p2.jpg", "p3.jpg", "p1.jpg").inOrder()
+    }
 }
+

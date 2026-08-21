@@ -48,12 +48,18 @@ class AdManagerTest {
     fun `rewarded grant unlocks feature privileges with expiration timestamp`() {
         val now = 100_000L
         assertThat(adManager.state.value.isBatchModeUnlocked(now)).isFalse()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(2)
+        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(5)
 
         val reward = AdReward.BatchModeUnlock(durationMs = 30 * 60 * 1000L)
         adManager.grantReward(reward, currentTimeMs = now)
 
         assertThat(adManager.state.value.isBatchModeUnlocked(now)).isTrue()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(10)
+        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(15)
+
         assertThat(adManager.state.value.isBatchModeUnlocked(now + 31 * 60 * 1000L)).isFalse()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now + 31 * 60 * 1000L)).isEqualTo(2)
 
         assertThat(fakeAnalytics.rewardsGranted).hasSize(1)
     }
@@ -67,5 +73,36 @@ class AdManagerTest {
         adManager.setAdFree(true)
         assertThat(adManager.shouldShowInterstitial(now)).isFalse()
         assertThat(adManager.state.value.isBatchModeUnlocked(now)).isTrue()
+    }
+
+    @Test
+    fun `pro subscription tier unlocks unlimited batch files, unlimited pdf images, and suppresses interstitials`() {
+        val now = 100_000L
+        adManager.recordConversion()
+        adManager.recordConversion()
+
+        adManager.setPro(true, SubscriptionTier.PRO_ANNUAL)
+
+        assertThat(adManager.state.value.isPro).isTrue()
+        assertThat(adManager.state.value.subscriptionTier).isEqualTo(SubscriptionTier.PRO_ANNUAL)
+        assertThat(adManager.shouldShowInterstitial(now)).isFalse()
+        assertThat(adManager.state.value.isBatchModeUnlocked(now)).isTrue()
+        assertThat(adManager.state.value.isUltraFastUnlocked(now)).isTrue()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(100)
+        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(500)
+    }
+
+    @Test
+    fun `fake billing manager purchases and updates subscription status correctly`() {
+        val billingManager = FakeBillingManager()
+        assertThat(billingManager.subscriptionStatus.value.isPro).isFalse()
+
+        billingManager.purchase(null, SubscriptionPlan.Annual)
+        assertThat(billingManager.subscriptionStatus.value.isPro).isTrue()
+        assertThat(billingManager.subscriptionStatus.value.tier).isEqualTo(SubscriptionTier.PRO_ANNUAL)
+
+        billingManager.purchase(null, SubscriptionPlan.Monthly)
+        assertThat(billingManager.subscriptionStatus.value.isPro).isTrue()
+        assertThat(billingManager.subscriptionStatus.value.tier).isEqualTo(SubscriptionTier.PRO_MONTHLY)
     }
 }

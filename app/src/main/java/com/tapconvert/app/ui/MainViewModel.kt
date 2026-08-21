@@ -101,6 +101,48 @@ class MainViewModel(
         }
     }
 
+    fun removeSourceUri(index: Int) {
+        val current = _uiState.value as? ConversionUiState.Configuring ?: return
+        if (index !in current.request.sourceUris.indices) return
+
+        val newUris = current.request.sourceUris.toMutableList().apply { removeAt(index) }
+        if (newUris.isEmpty()) {
+            _uiState.value = ConversionUiState.Idle
+            return
+        }
+        val newNames = newUris.map { File(it.removePrefix("file://")).name }
+        _uiState.value = current.copy(
+            request = current.request.copy(sourceUris = newUris),
+            sourceFileNames = newNames
+        )
+    }
+
+    fun addSourceUris(newUris: List<String>) {
+        val current = _uiState.value as? ConversionUiState.Configuring ?: return
+        if (newUris.isEmpty()) return
+
+        val combinedUris = (current.request.sourceUris + newUris).distinct()
+        val combinedNames = combinedUris.map { File(it.removePrefix("file://")).name }
+        _uiState.value = current.copy(
+            request = current.request.copy(sourceUris = combinedUris),
+            sourceFileNames = combinedNames
+        )
+    }
+
+    fun reorderSourceUris(fromIndex: Int, toIndex: Int) {
+        val current = _uiState.value as? ConversionUiState.Configuring ?: return
+        val uris = current.request.sourceUris.toMutableList()
+        if (fromIndex !in uris.indices || toIndex !in uris.indices || fromIndex == toIndex) return
+
+        val item = uris.removeAt(fromIndex)
+        uris.add(toIndex, item)
+        val names = uris.map { File(it.removePrefix("file://")).name }
+        _uiState.value = current.copy(
+            request = current.request.copy(sourceUris = uris),
+            sourceFileNames = names
+        )
+    }
+
     fun startConversion(outputDirectory: File) {
         val current = _uiState.value as? ConversionUiState.Configuring ?: return
         val request = current.request
@@ -185,5 +227,9 @@ class MainViewModel(
 
     fun unlockBatchMode(reward: AdReward = AdReward.BatchModeUnlock()) {
         adManager.grantReward(reward)
+    }
+
+    fun purchasePro(plan: com.tapconvert.core.ads.SubscriptionPlan = com.tapconvert.core.ads.SubscriptionPlan.Annual) {
+        adManager.setPro(true, plan.tier)
     }
 }

@@ -18,6 +18,15 @@ class PdfEngineTest {
     private val engine = DefaultPdfEngine(fakeAnalytics)
     private val tempDir = File(System.getProperty("java.io.tmpdir"), "tapconvert_pdf_test_out")
 
+    @Test(expected = IllegalArgumentException::class)
+    fun `ConversionRequest with empty source list throws IllegalArgumentException`() {
+        ConversionRequest(
+            sourceUris = emptyList(),
+            conversionType = ConversionType.IMAGES_TO_PDF,
+            targetMimeType = MimeType.Document.PDF
+        )
+    }
+
     @Test
     fun `convertImagesToPdf emits error when source image does not exist and logs failed event`() = runTest {
         val request = ConversionRequest(
