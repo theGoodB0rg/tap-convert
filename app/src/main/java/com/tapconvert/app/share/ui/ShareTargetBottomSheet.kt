@@ -1,0 +1,445 @@
+package com.tapconvert.app.share.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.tapconvert.app.share.SharePayload
+import com.tapconvert.app.share.ShareTargetUiState
+import com.tapconvert.app.ui.theme.SavingsGreen
+import com.tapconvert.app.ui.theme.SavingsGreenLight
+import com.tapconvert.core.model.ConversionQuality
+import com.tapconvert.core.model.MediaCategory
+import com.tapconvert.core.model.MimeType
+import com.tapconvert.core.model.Preset
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ShareTargetBottomSheet(
+    uiState: ShareTargetUiState,
+    onSelectPreset: (Preset) -> Unit,
+    onSelectTargetMime: (MimeType) -> Unit,
+    onQualityChange: (ConversionQuality) -> Unit,
+    onStartConversion: () -> Unit,
+    onCancelConversion: () -> Unit,
+    onShareResult: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 8.dp,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Drag handle
+            Box(
+                modifier = Modifier
+                    .width(40.dp)
+                    .height(4.dp)
+                    .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(2.dp))
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            // Header Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "TapConvert Quick Action",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+
+            when (uiState) {
+                is ShareTargetUiState.Loading -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                        Text(
+                            text = "Reading shared media...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                is ShareTargetUiState.Ready -> {
+                    ReadyContent(
+                        payload = uiState.payload,
+                        suggestedPresets = uiState.suggestedPresets,
+                        selectedPreset = uiState.selectedPreset,
+                        selectedTargetMimeType = uiState.selectedTargetMimeType,
+                        customQuality = uiState.customQuality,
+                        onSelectPreset = onSelectPreset,
+                        onSelectTargetMime = onSelectTargetMime,
+                        onQualityChange = onQualityChange,
+                        onConvertClick = onStartConversion
+                    )
+                }
+
+                is ShareTargetUiState.Converting -> {
+                    ConvertingContent(
+                        percentage = uiState.percentage,
+                        statusMessage = uiState.statusMessage,
+                        onCancelClick = onCancelConversion
+                    )
+                }
+
+                is ShareTargetUiState.Success -> {
+                    SuccessContent(
+                        state = uiState,
+                        onShareClick = onShareResult,
+                        onDoneClick = onDismiss
+                    )
+                }
+
+                is ShareTargetUiState.Error -> {
+                    ErrorContent(
+                        message = uiState.error.userReadableMessage,
+                        onDismiss = onDismiss
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadyContent(
+    payload: SharePayload,
+    suggestedPresets: List<Preset>,
+    selectedPreset: Preset?,
+    selectedTargetMimeType: MimeType,
+    customQuality: ConversionQuality,
+    onSelectPreset: (Preset) -> Unit,
+    onSelectTargetMime: (MimeType) -> Unit,
+    onQualityChange: (ConversionQuality) -> Unit,
+    onConvertClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // File badge summary card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = when (payload.category) {
+                        MediaCategory.IMAGE -> Icons.Default.Image
+                        MediaCategory.VIDEO -> Icons.Default.Videocam
+                        MediaCategory.DOCUMENT -> Icons.Default.PictureAsPdf
+                        MediaCategory.AUDIO -> Icons.Default.Audiotrack
+                    },
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (payload.fileNames.size == 1) payload.fileNames.first() else "${payload.fileNames.size} files selected",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "${formatSize(payload.totalSizeBytes)} • ${payload.category.name}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Suggested Presets
+        if (suggestedPresets.isNotEmpty()) {
+            Text(
+                text = "Recommended 1-Tap Goals",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 2.dp)
+            ) {
+                items(suggestedPresets) { preset ->
+                    FilterChip(
+                        selected = selectedPreset?.id == preset.id,
+                        onClick = { onSelectPreset(preset) },
+                        label = { Text(preset.name) },
+                        leadingIcon = {
+                            if (selectedPreset?.id == preset.id) {
+                                Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    )
+                }
+            }
+        }
+
+        // Target Format selection row
+        Text(
+            text = "Target Format",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold
+        )
+
+        val targetFormats = when (payload.category) {
+            MediaCategory.IMAGE -> listOf(MimeType.Image.JPEG, MimeType.Image.PNG, MimeType.Image.WEBP, MimeType.Document.PDF)
+            MediaCategory.VIDEO -> listOf(MimeType.Video.MP4, MimeType.Audio.MP3, MimeType.Audio.AAC)
+            MediaCategory.DOCUMENT -> listOf(MimeType.Image.JPEG, MimeType.Image.PNG, MimeType.Document.PDF)
+            MediaCategory.AUDIO -> listOf(MimeType.Audio.MP3, MimeType.Audio.AAC)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            targetFormats.forEach { mime ->
+                FilterChip(
+                    selected = selectedTargetMimeType == mime,
+                    onClick = { onSelectTargetMime(mime) },
+                    label = { Text(mime.displayName) }
+                )
+            }
+        }
+
+        // Convert Button
+        Button(
+            onClick = onConvertClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = if (selectedPreset != null) "Convert to ${selectedPreset.name}" else "Convert to ${selectedTargetMimeType.displayName}",
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConvertingContent(
+    percentage: Int,
+    statusMessage: String,
+    onCancelClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Converting Media...",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        LinearProgressIndicator(
+            progress = { percentage / 100f },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp),
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = statusMessage.ifBlank { "Processing..." },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = "$percentage%",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        OutlinedButton(
+            onClick = onCancelClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Cancel")
+        }
+    }
+}
+
+@Composable
+private fun SuccessContent(
+    state: ShareTargetUiState.Success,
+    onShareClick: (String) -> Unit,
+    onDoneClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = SavingsGreenLight),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = SavingsGreen,
+                    modifier = Modifier.size(32.dp)
+                )
+                Column {
+                    Text(
+                        text = "Ready to Share!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = SavingsGreen
+                    )
+                    Text(
+                        text = "${formatSize(state.result.originalSizeBytes)} ➔ ${formatSize(state.result.outputSizeBytes)} (${state.record.savingsPercentage}% saved)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.DarkGray
+                    )
+                }
+            }
+        }
+
+        Button(
+            onClick = {
+                val primaryOutput = state.outputFilePaths.firstOrNull() ?: ""
+                onShareClick(primaryOutput)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Share Converted File", fontWeight = FontWeight.Bold)
+        }
+
+        OutlinedButton(
+            onClick = onDoneClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Done")
+        }
+    }
+}
+
+@Composable
+private fun ErrorContent(
+    message: String,
+    onDismiss: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.ErrorOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(48.dp)
+        )
+        Text(
+            text = "Conversion Failed",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Button(
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Close")
+        }
+    }
+}
+
+private fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 KB"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    return if (mb >= 1.0) {
+        "%.1f MB".format(mb)
+    } else {
+        "%.0f KB".format(kb)
+    }
+}
