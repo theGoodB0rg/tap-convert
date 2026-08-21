@@ -12,33 +12,49 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Teal80,
-    secondary = Orange80,
-    tertiary = TealGrey80,
-    background = DarkSurface,
-    surface = DarkSurfaceVariant,
-    onPrimary = Color.Black,
-    onSecondary = Color.Black,
-    onBackground = Color.White,
-    onSurface = Color.White
+    primary = PrimaryTealLight,
+    onPrimary = Color(0xFF003730),
+    primaryContainer = PrimaryTealDark,
+    onPrimaryContainer = PrimaryTealContainer,
+    secondary = SecondaryCyan,
+    onSecondary = Color(0xFF00363D),
+    tertiary = AccentAmber,
+    onTertiary = AccentAmberDark,
+    background = DarkBackground,
+    onBackground = DarkTextPrimary,
+    surface = DarkSurface,
+    onSurface = DarkTextPrimary,
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+    outline = DarkSurfaceOutline,
+    error = ErrorRed,
+    onError = Color.White
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Teal40,
-    secondary = Orange40,
-    tertiary = TealGrey40,
-    background = LightSurface,
-    surface = LightSurfaceVariant,
+    primary = PrimaryTeal,
     onPrimary = Color.White,
-    onSecondary = Color.White,
-    onBackground = Color.Black,
-    onSurface = Color.Black
+    primaryContainer = PrimaryTealContainer,
+    onPrimaryContainer = OnPrimaryTealContainer,
+    secondary = SecondaryCyan,
+    onSecondary = Color.Black,
+    tertiary = AccentAmber,
+    onTertiary = Color.White,
+    background = LightBackground,
+    onBackground = LightTextPrimary,
+    surface = LightSurface,
+    onSurface = LightTextPrimary,
+    surfaceVariant = LightSurfaceVariant,
+    onSurfaceVariant = LightTextSecondary,
+    outline = LightSurfaceOutline,
+    error = ErrorRed,
+    onError = Color.White
 )
 
 @Composable
 fun TapConvertTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
@@ -55,3 +71,4 @@ fun TapConvertTheme(
         content = content
     )
 }
+
