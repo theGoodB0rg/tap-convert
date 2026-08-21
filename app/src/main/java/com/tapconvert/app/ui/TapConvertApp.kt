@@ -31,13 +31,16 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tapconvert.app.share.ShareHelper
 import com.tapconvert.app.share.ShareIntentParser
+import com.tapconvert.app.ui.components.TierLimitExceededDialog
 import com.tapconvert.app.ui.config.ConfigurationScreen
 import com.tapconvert.app.ui.dashboard.DashboardScreen
+import com.tapconvert.app.ui.dashboard.DocumentStudioSheet
 import com.tapconvert.app.ui.history.HistoryScreen
 import com.tapconvert.app.ui.history.HistoryViewModel
 import com.tapconvert.app.ui.processing.ProcessingScreen
 import com.tapconvert.app.ui.result.ResultScreen
 import com.tapconvert.app.ui.settings.AboutUsScreen
+import com.tapconvert.app.ui.settings.HowToUseScreen
 import com.tapconvert.app.ui.settings.PrivacyPolicyScreen
 import com.tapconvert.app.ui.settings.SettingsScreen
 import com.tapconvert.app.ui.theme.AccentAmber
@@ -62,6 +65,7 @@ enum class NavigationTab {
 
 enum class SettingsSubScreen {
     MAIN,
+    HOW_TO_USE,
     PRIVACY_POLICY,
     ABOUT_US
 }
@@ -106,6 +110,7 @@ fun TapConvertApp() {
     val uiState by mainViewModel.uiState.collectAsState()
     val adState by mainViewModel.adManager.state.collectAsState()
     val shouldShowInterstitial by mainViewModel.shouldShowInterstitial.collectAsState()
+    val tierLimitExceeded by mainViewModel.tierLimitExceeded.collectAsState()
 
     val historyRecords by historyViewModel.records.collectAsState()
     val totalStorageBytes by historyViewModel.totalStorageUsageBytes.collectAsState()
@@ -114,6 +119,7 @@ fun TapConvertApp() {
     var currentTab by remember { mutableStateOf(NavigationTab.DASHBOARD) }
     var settingsSubScreen by remember { mutableStateOf(SettingsSubScreen.MAIN) }
     var showFastPassDialog by remember { mutableStateOf(false) }
+    var showDocumentStudioSheet by remember { mutableStateOf(false) }
     var showExitDialog by remember { mutableStateOf(false) }
     var showCancelProcessingDialog by remember { mutableStateOf(false) }
 
@@ -186,27 +192,60 @@ fun TapConvertApp() {
         pendingCategory = null
 
         if (preset != null) {
-            mainViewModel.selectPreset(preset, workingUris)
+            mainViewModel.checkAndExecuteIntake(workingUris, preset.conversionType) { allowed ->
+                mainViewModel.selectPreset(preset, allowed)
+            }
         } else if (category != null) {
             when (category) {
-                MediaCategory.IMAGE -> mainViewModel.configureCustom(workingUris, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
-                MediaCategory.VIDEO -> mainViewModel.configureCustom(workingUris, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
-                MediaCategory.DOCUMENT -> mainViewModel.configureCustom(workingUris, ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
-                MediaCategory.AUDIO -> mainViewModel.configureCustom(workingUris, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+                MediaCategory.IMAGE -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                    }
+                }
+                MediaCategory.VIDEO -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.VIDEO_COMPRESS) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
+                    }
+                }
+                MediaCategory.DOCUMENT -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGES_TO_PDF) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
+                    }
+                }
+                MediaCategory.AUDIO -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.EXTRACT_AUDIO) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+                    }
+                }
             }
         } else {
             val first = fileNames.firstOrNull()?.lowercase() ?: ""
             when {
-                first.endsWith(".png") || first.endsWith(".jpg") || first.endsWith(".jpeg") || first.endsWith(".webp") || first.endsWith(".heic") ->
-                    mainViewModel.configureCustom(workingUris, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
-                first.endsWith(".mp4") || first.endsWith(".mkv") || first.endsWith(".mov") || first.endsWith(".webm") ->
-                    mainViewModel.configureCustom(workingUris, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
-                first.endsWith(".pdf") ->
-                    mainViewModel.configureCustom(workingUris, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
-                first.endsWith(".mp3") || first.endsWith(".m4a") || first.endsWith(".aac") || first.endsWith(".wav") ->
-                    mainViewModel.configureCustom(workingUris, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
-                else ->
-                    mainViewModel.configureCustom(workingUris, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                first.endsWith(".png") || first.endsWith(".jpg") || first.endsWith(".jpeg") || first.endsWith(".webp") || first.endsWith(".heic") -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                    }
+                }
+                first.endsWith(".mp4") || first.endsWith(".mkv") || first.endsWith(".mov") || first.endsWith(".webm") -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.VIDEO_COMPRESS) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
+                    }
+                }
+                first.endsWith(".pdf") -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.PDF_TO_IMAGES) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
+                    }
+                }
+                first.endsWith(".mp3") || first.endsWith(".m4a") || first.endsWith(".aac") || first.endsWith(".wav") -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.EXTRACT_AUDIO) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+                    }
+                }
+                else -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                    }
+                }
             }
         }
     }
@@ -242,6 +281,16 @@ fun TapConvertApp() {
         }
     }
 
+    // Intent handoff from Share Sheet or external launch
+    val initialIntakeUris = (context as? Activity)?.intent?.getStringArrayListExtra("EXTRA_INTAKE_URIS")
+    LaunchedEffect(initialIntakeUris) {
+        if (!initialIntakeUris.isNullOrEmpty()) {
+            val uris = initialIntakeUris.map { Uri.parse(it) }
+            processPickedUris(uris)
+            (context as? Activity)?.intent?.removeExtra("EXTRA_INTAKE_URIS")
+        }
+    }
+
     // Interstitial consumption callback
     LaunchedEffect(shouldShowInterstitial) {
         if (shouldShowInterstitial) {
@@ -273,6 +322,47 @@ fun TapConvertApp() {
     }
 
     TapConvertTheme {
+        // Tier Limit Exceeded Dialog
+        tierLimitExceeded?.let { limitInfo ->
+            TierLimitExceededDialog(
+                limitInfo = limitInfo,
+                onProceedWithLimit = { allowed ->
+                    mainViewModel.proceedWithClampedLimit(allowed)
+                },
+                onUnlockFastPass = {
+                    mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+                    mainViewModel.retryPendingIntakeWithNewTier()
+                    Toast.makeText(context, "Fast Pass Active (24h)!", Toast.LENGTH_SHORT).show()
+                },
+                onUpgradePro = {
+                    mainViewModel.dismissTierLimit()
+                    showFastPassDialog = true
+                },
+                onDismiss = {
+                    mainViewModel.dismissTierLimit()
+                }
+            )
+        }
+
+        // PDF & Document Studio Sheet
+        if (showDocumentStudioSheet) {
+            DocumentStudioSheet(
+                onPhotosToPdfClick = {
+                    pendingPreset = null
+                    pendingCategory = MediaCategory.DOCUMENT
+                    visualMediaPickerLauncher.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                onPdfToPhotosClick = {
+                    pendingPreset = null
+                    pendingCategory = null
+                    documentPickerLauncher.launch(arrayOf("application/pdf"))
+                },
+                onDismiss = { showDocumentStudioSheet = false }
+            )
+        }
+
         // Fast Pass & Pro Monetization Dialog
         if (showFastPassDialog) {
             AlertDialog(
@@ -526,7 +616,7 @@ fun TapConvertApp() {
                                                     )
                                                 }
                                                 MediaCategory.DOCUMENT -> {
-                                                    documentPickerLauncher.launch(arrayOf("application/pdf", "image/*"))
+                                                    showDocumentStudioSheet = true
                                                 }
                                                 MediaCategory.AUDIO -> {
                                                     documentPickerLauncher.launch(arrayOf("audio/*", "video/*"))
@@ -548,7 +638,7 @@ fun TapConvertApp() {
                                                     )
                                                 }
                                                 MediaCategory.DOCUMENT -> {
-                                                    documentPickerLauncher.launch(arrayOf("application/pdf", "image/*"))
+                                                    showDocumentStudioSheet = true
                                                 }
                                                 MediaCategory.AUDIO -> {
                                                     documentPickerLauncher.launch(arrayOf("audio/*", "video/*"))
@@ -615,9 +705,15 @@ fun TapConvertApp() {
                                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                                     }
                                                 },
+                                                onHowToUseClick = { settingsSubScreen = SettingsSubScreen.HOW_TO_USE },
                                                 onPrivacyPolicyClick = { settingsSubScreen = SettingsSubScreen.PRIVACY_POLICY },
                                                 onAboutUsClick = { settingsSubScreen = SettingsSubScreen.ABOUT_US },
                                                 onBackClick = { currentTab = NavigationTab.DASHBOARD }
+                                            )
+                                        }
+                                        SettingsSubScreen.HOW_TO_USE -> {
+                                            HowToUseScreen(
+                                                onBackClick = { settingsSubScreen = SettingsSubScreen.MAIN }
                                             )
                                         }
                                         SettingsSubScreen.PRIVACY_POLICY -> {
@@ -671,6 +767,10 @@ fun TapConvertApp() {
                                 record = state.record,
                                 onShareClick = { filePath ->
                                     val chooserIntent = ShareHelper.createShareChooserIntent(context, filePath)
+                                    context.startActivity(chooserIntent)
+                                },
+                                onShareMultipleClick = { uris ->
+                                    val chooserIntent = ShareHelper.createMultipleShareChooserIntent(context, uris)
                                     context.startActivity(chooserIntent)
                                 },
                                 onFavoriteToggle = { id, fav -> mainViewModel.toggleFavorite(id, fav) },

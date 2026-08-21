@@ -3,35 +3,41 @@ package com.tapconvert.app.ui.config
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import com.tapconvert.app.ui.components.AsyncThumbnailImage
 import com.tapconvert.app.ui.theme.PrimaryTeal
 import com.tapconvert.app.ui.theme.SavingsGreen
 import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.ConversionRequest
 import com.tapconvert.core.model.ConversionType
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +54,7 @@ fun ConfigurationScreen(
 ) {
     var sliderPosition by remember { mutableFloatStateOf(request.quality.qualityPercent.toFloat()) }
     var showAdvanced by remember { mutableStateOf(false) }
+    var previewImageUri by remember { mutableStateOf<String?>(null) }
 
     val isPdfOrMultiFile = request.conversionType == ConversionType.IMAGES_TO_PDF || sourceFileNames.size > 1
 
@@ -60,6 +67,66 @@ fun ConfigurationScreen(
             q <= 80 -> 65
             q <= 90 -> 45
             else -> 20
+        }
+    }
+
+    // Enlarged Image Inspection Dialog
+    if (previewImageUri != null) {
+        Dialog(onDismissRequest = { previewImageUri = null }) {
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Image Preview",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(onClick = { previewImageUri = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Close")
+                        }
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(300.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AsyncThumbnailImage(
+                            uriOrPath = previewImageUri!!,
+                            contentDescription = "Full Preview",
+                            cornerRadius = 12.dp,
+                            targetSizePx = 600,
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
+
+                    Button(
+                        onClick = { previewImageUri = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Done")
+                    }
+                }
+            }
         }
     }
 
@@ -76,7 +143,7 @@ fun ConfigurationScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -127,7 +194,7 @@ fun ConfigurationScreen(
                 .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Selected Files / Image Tray Card
+            // Selected Files / Visual Image Tray Card
             Card(
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
@@ -153,7 +220,7 @@ fun ConfigurationScreen(
                             )
                             if (request.conversionType == ConversionType.IMAGES_TO_PDF) {
                                 Text(
-                                    text = "Reorder or remove pages before merging",
+                                    text = "Visual preview: tap to inspect, reorder or remove",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -179,41 +246,75 @@ fun ConfigurationScreen(
 
                     HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
 
-                    // Multi-Item Page Tray
+                    // Multi-Item Page Tray with Visual Thumbnails
                     sourceFileNames.forEachIndexed { index, name ->
+                        val uri = request.sourceUris.getOrNull(index) ?: ""
+                        val fileLength = try {
+                            val f = File(uri.removePrefix("file://"))
+                            if (f.exists()) f.length() else 0L
+                        } catch (_: Throwable) { 0L }
+
                         Surface(
                             color = MaterialTheme.colorScheme.surface,
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                Surface(
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    shape = RoundedCornerShape(6.dp)
+                                // Visual Thumbnail Preview
+                                Box(
+                                    modifier = Modifier
+                                        .size(56.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (uri.isNotBlank()) previewImageUri = uri
+                                        }
                                 ) {
-                                    Text(
-                                        text = if (request.conversionType == ConversionType.IMAGES_TO_PDF) "P${index + 1}" else "#${index + 1}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    AsyncThumbnailImage(
+                                        uriOrPath = uri,
+                                        contentDescription = name,
+                                        cornerRadius = 8.dp,
+                                        modifier = Modifier.fillMaxSize()
                                     )
+                                    // Page Number / Index Badge overlay
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.65f),
+                                        shape = RoundedCornerShape(topStart = 0.dp, bottomEnd = 6.dp),
+                                        modifier = Modifier.align(Alignment.TopStart)
+                                    ) {
+                                        Text(
+                                            text = if (request.conversionType == ConversionType.IMAGES_TO_PDF) "P${index + 1}" else "#${index + 1}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            fontSize = 10.sp,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
 
-                                Text(
-                                    text = name,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                // File Details
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = name,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (fileLength > 0L) {
+                                        Text(
+                                            text = formatSize(fileLength),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
 
                                 if (isPdfOrMultiFile && sourceFileNames.size > 1) {
                                     // Move Up
@@ -505,5 +606,16 @@ fun ConfigurationScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
         }
+    }
+}
+
+private fun formatSize(bytes: Long): String {
+    if (bytes <= 0) return "0 KB"
+    val kb = bytes / 1024.0
+    val mb = kb / 1024.0
+    return if (mb >= 1.0) {
+        "%.1f MB".format(mb)
+    } else {
+        "%.0f KB".format(kb)
     }
 }

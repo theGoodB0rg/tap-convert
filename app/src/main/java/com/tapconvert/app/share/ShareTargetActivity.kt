@@ -78,6 +78,9 @@ class ShareTargetActivity : ComponentActivity() {
                             onShareResult = { outputPath ->
                                 dispatchShareResult(outputPath)
                             },
+                            onOpenInFullStudio = {
+                                launchFullStudio()
+                            },
                             onDismiss = {
                                 finish()
                             }
@@ -86,6 +89,21 @@ class ShareTargetActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private fun launchFullStudio() {
+        val state = viewModel.uiState.value
+        val uris = when (state) {
+            is ShareTargetUiState.Ready -> state.payload.sourceUris
+            is ShareTargetUiState.Success -> state.result.outputUris
+            else -> emptyList()
+        }
+        val intent = Intent(this, com.tapconvert.app.MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putStringArrayListExtra("EXTRA_INTAKE_URIS", ArrayList(uris))
+        }
+        startActivity(intent)
+        finish()
     }
 
     private fun dispatchShareResult(outputPath: String) {

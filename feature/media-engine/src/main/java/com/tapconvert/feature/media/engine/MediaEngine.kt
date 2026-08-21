@@ -35,102 +35,113 @@ class DefaultMediaEngine(
         outputDirectory: File
     ): Flow<AppResult<ConversionResult>> = flow {
         val startTime = System.currentTimeMillis()
-        val sourceUri = request.sourceUris.firstOrNull()
-
-        if (sourceUri == null) {
+        if (request.sourceUris.isEmpty()) {
             val error = ConversionError.FileNotFound("No source video URI provided")
             analyticsTracker.logConversionFailed(ConversionType.VIDEO_COMPRESS, "FileNotFound", error.userReadableMessage, request.preset?.id)
             emit(AppResult.Error(error))
             return@flow
         }
 
-        val sourceFile = File(sourceUri.removePrefix("file://"))
-        val originalSize = if (sourceFile.exists()) sourceFile.length() else 0L
+        val totalFiles = request.sourceUris.size
+        val outputUris = mutableListOf<String>()
+        var totalOriginalSize = 0L
+        var totalOutputSize = 0L
+        outputDirectory.mkdirs()
 
         analyticsTracker.logConversionStarted(
             type = ConversionType.VIDEO_COMPRESS,
-            inputSizeBytes = originalSize,
+            inputSizeBytes = 0L,
             sourceFormat = "video/*",
             presetId = request.preset?.id
         )
 
-        // Stage 1: Analyzing
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(15, ConversionProgress(15, ConversionStage.ANALYZING).overallSummary))
+        request.sourceUris.forEachIndexed { index, uriStr ->
+            currentCoroutineContext().ensureActive()
+            val sourceFile = File(uriStr.removePrefix("file://"))
+            val originalSize = if (sourceFile.exists()) sourceFile.length() else 0L
+            totalOriginalSize += originalSize
 
-        if (!sourceFile.exists()) {
-            val error = ConversionError.FileNotFound(sourceUri)
-            analyticsTracker.logConversionFailed(ConversionType.VIDEO_COMPRESS, "FileNotFound", error.userReadableMessage, request.preset?.id)
-            emit(AppResult.Error(error))
-            return@flow
-        }
+            val baseProgress = (index.toFloat() / totalFiles.toFloat() * 100f).toInt()
+            emit(AppResult.Progress(
+                percentage = baseProgress + (10 / totalFiles).coerceAtLeast(1),
+                currentStep = ConversionProgress(15, ConversionStage.ANALYZING).overallSummary
+            ))
 
-        val mediaInfo = MediaMetadataRetrieverHelper.extractMediaInfo(sourceFile)
-        val durationSeconds = mediaInfo?.durationSeconds ?: 60.0
+            if (!sourceFile.exists()) {
+                val error = ConversionError.FileNotFound(uriStr)
+                analyticsTracker.logConversionFailed(ConversionType.VIDEO_COMPRESS, "FileNotFound", error.userReadableMessage, request.preset?.id)
+                emit(AppResult.Error(error))
+                return@flow
+            }
 
-        // Stage 2: Preparing & Calculating Bitrate
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(30, ConversionProgress(30, ConversionStage.PREPARING).overallSummary))
+            val mediaInfo = MediaMetadataRetrieverHelper.extractMediaInfo(sourceFile)
+            val durationSeconds = mediaInfo?.durationSeconds ?: 60.0
 
-        val targetSize = request.targetSize ?: TargetSize.fromMegabytes(16)
-        val encodingSpec = BitrateCalculator.calculateTargetBitrate(
-            targetSize = targetSize,
-            durationSeconds = durationSeconds,
-            audioBitrateBps = request.customAudioBitrateKbps?.let { it * 1000 } ?: BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS
-        )
+            emit(AppResult.Progress(
+                percentage = baseProgress + (25 / totalFiles).coerceAtLeast(1),
+                currentStep = ConversionProgress(30, ConversionStage.PREPARING).overallSummary
+            ))
 
-        outputDirectory.mkdirs()
-        val outputFileName = request.outputFileName
-            ?: "vid_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.mp4"
-        val outputFile = File(outputDirectory, outputFileName)
+            val targetSize = request.targetSize ?: TargetSize.fromMegabytes(16)
+            val encodingSpec = BitrateCalculator.calculateTargetBitrate(
+                targetSize = targetSize,
+                durationSeconds = durationSeconds,
+                audioBitrateBps = request.customAudioBitrateKbps?.let { it * 1000 } ?: BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS
+            )
 
-        // Stage 3 & 4: Transcoding Stream via VideoTranscoder
-        var transcodeSuccess = false
-        var transcodeError: Throwable? = null
+            val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
+                request.outputFileName!!
+            } else {
+                val baseName = sourceFile.nameWithoutExtension.take(20)
+                "vid_${System.currentTimeMillis()}_${baseName}_${UUID.randomUUID().toString().take(4)}.mp4"
+            }
+            val outputFile = File(outputDirectory, outputFileName)
 
-        transcoder.transcode(sourceFile, outputFile, encodingSpec).collect { transcodeResult ->
-            when (transcodeResult) {
-                is AppResult.Progress -> {
-                    // Map 0..100 transcode progress into 35..90 overall progress
-                    val mappedPct = 35 + (transcodeResult.percentage * 0.55).toInt()
-                    emit(AppResult.Progress(mappedPct, ConversionProgress(mappedPct, ConversionStage.COMPRESSING).overallSummary))
-                }
-                is AppResult.Success -> {
-                    transcodeSuccess = true
-                }
-                is AppResult.Error -> {
-                    transcodeError = transcodeResult.throwable
+            var transcodeSuccess = false
+            var transcodeError: Throwable? = null
+
+            transcoder.transcode(sourceFile, outputFile, encodingSpec).collect { transcodeResult ->
+                when (transcodeResult) {
+                    is AppResult.Progress -> {
+                        val mappedPct = baseProgress + (35 + transcodeResult.percentage * 0.55f) / totalFiles
+                        emit(AppResult.Progress(mappedPct.toInt(), ConversionProgress(mappedPct.toInt(), ConversionStage.COMPRESSING).overallSummary))
+                    }
+                    is AppResult.Success -> {
+                        transcodeSuccess = true
+                    }
+                    is AppResult.Error -> {
+                        transcodeError = transcodeResult.throwable
+                    }
                 }
             }
+
+            if (!transcodeSuccess) {
+                val failureError = transcodeError?.let {
+                    if (it is ConversionError) it else ConversionError.IOError("Transcoding failed: ${it.message}", it)
+                } ?: ConversionError.IOError("Unknown error occurred during video transcoding")
+
+                analyticsTracker.logConversionFailed(
+                    type = ConversionType.VIDEO_COMPRESS,
+                    errorType = failureError::class.java.simpleName,
+                    errorMessage = failureError.userReadableMessage,
+                    presetId = request.preset?.id
+                )
+                emit(AppResult.Error(failureError))
+                return@flow
+            }
+
+            totalOutputSize += outputFile.length()
+            outputUris.add(outputFile.absolutePath)
         }
 
-        if (!transcodeSuccess) {
-            val failureError = transcodeError?.let {
-                if (it is ConversionError) it else ConversionError.IOError("Transcoding failed: ${it.message}", it)
-            } ?: ConversionError.IOError("Unknown error occurred during video transcoding")
-
-            analyticsTracker.logConversionFailed(
-                type = ConversionType.VIDEO_COMPRESS,
-                errorType = failureError::class.java.simpleName,
-                errorMessage = failureError.userReadableMessage,
-                presetId = request.preset?.id
-            )
-            emit(AppResult.Error(failureError))
-            return@flow
-        }
-
-        // Stage 5: Finalizing
-        currentCoroutineContext().ensureActive()
         emit(AppResult.Progress(95, ConversionProgress(95, ConversionStage.FINALIZING).overallSummary))
 
         val duration = System.currentTimeMillis() - startTime
-        val outputSize = outputFile.length()
-
         analyticsTracker.logConversionCompleted(
             type = ConversionType.VIDEO_COMPRESS,
             durationMs = duration,
-            inputSizeBytes = originalSize,
-            outputSizeBytes = outputSize,
+            inputSizeBytes = totalOriginalSize,
+            outputSizeBytes = totalOutputSize,
             presetId = request.preset?.id
         )
 
@@ -139,14 +150,15 @@ class DefaultMediaEngine(
                 ConversionResult(
                     requestId = request.id,
                     conversionType = ConversionType.VIDEO_COMPRESS,
-                    outputUris = listOf(outputFile.absolutePath),
-                    originalSizeBytes = originalSize,
-                    outputSizeBytes = outputSize,
+                    outputUris = outputUris,
+                    originalSizeBytes = totalOriginalSize,
+                    outputSizeBytes = totalOutputSize,
                     durationMs = duration,
                     metadata = mapOf(
-                        "videoBitrateBps" to encodingSpec.videoBitrateBps.toString(),
-                        "audioBitrateBps" to encodingSpec.audioBitrateBps.toString(),
-                        "maxDimension" to encodingSpec.recommendedMaxDimension.toString()
+                        "videoBitrateBps" to (request.targetSize?.bytes ?: 0L).toString(),
+                        "audioBitrateBps" to BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS.toString(),
+                        "maxDimension" to "1280",
+                        "batchCount" to totalFiles.toString()
                     )
                 )
             )
@@ -158,73 +170,78 @@ class DefaultMediaEngine(
         outputDirectory: File
     ): Flow<AppResult<ConversionResult>> = flow {
         val startTime = System.currentTimeMillis()
-        val sourceUri = request.sourceUris.firstOrNull()
-
-        if (sourceUri == null) {
+        if (request.sourceUris.isEmpty()) {
             val error = ConversionError.FileNotFound("No source media file provided")
             analyticsTracker.logConversionFailed(ConversionType.EXTRACT_AUDIO, "FileNotFound", error.userReadableMessage, request.preset?.id)
             emit(AppResult.Error(error))
             return@flow
         }
 
-        val sourceFile = File(sourceUri.removePrefix("file://"))
-        val originalSize = if (sourceFile.exists()) sourceFile.length() else 0L
+        val totalFiles = request.sourceUris.size
+        val outputUris = mutableListOf<String>()
+        var totalOriginalSize = 0L
+        var totalOutputSize = 0L
+
+        val targetMime = request.targetMimeType
+        val extension = if (targetMime is MimeType.Audio) targetMime.primaryExtension else "m4a"
+        outputDirectory.mkdirs()
 
         analyticsTracker.logConversionStarted(
             type = ConversionType.EXTRACT_AUDIO,
-            inputSizeBytes = originalSize,
+            inputSizeBytes = 0L,
             sourceFormat = "video/*",
             presetId = request.preset?.id
         )
 
-        // Stage 1: Analyzing
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(15, ConversionProgress(15, ConversionStage.ANALYZING).overallSummary))
+        request.sourceUris.forEachIndexed { index, uriStr ->
+            currentCoroutineContext().ensureActive()
+            val sourceFile = File(uriStr.removePrefix("file://"))
+            val originalSize = if (sourceFile.exists()) sourceFile.length() else 0L
+            totalOriginalSize += originalSize
 
-        if (!sourceFile.exists()) {
-            val error = ConversionError.FileNotFound(sourceUri)
-            analyticsTracker.logConversionFailed(ConversionType.EXTRACT_AUDIO, "FileNotFound", error.userReadableMessage, request.preset?.id)
-            emit(AppResult.Error(error))
-            return@flow
-        }
+            val baseProgress = (index.toFloat() / totalFiles.toFloat() * 100f).toInt()
+            emit(AppResult.Progress(
+                percentage = baseProgress + (15 / totalFiles).coerceAtLeast(1),
+                currentStep = "Extracting audio from file ${index + 1} of $totalFiles: ${sourceFile.name}"
+            ))
 
-        // Stage 2 & 3: Demuxing & Audio Extraction
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(50, ConversionProgress(50, ConversionStage.PROCESSING).overallSummary))
-
-        val targetMime = request.targetMimeType
-        val extension = if (targetMime is MimeType.Audio) targetMime.primaryExtension else "m4a"
-
-        outputDirectory.mkdirs()
-        val outputFileName = request.outputFileName
-            ?: "audio_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$extension"
-        val outputFile = File(outputDirectory, outputFileName)
-
-        try {
-            val extracted = extractAudioTrack(sourceFile, outputFile)
-            if (!extracted) {
-                // If direct track demuxing was not possible, perform binary stream copy
-                sourceFile.copyTo(outputFile, overwrite = true)
+            if (!sourceFile.exists()) {
+                val error = ConversionError.FileNotFound(uriStr)
+                analyticsTracker.logConversionFailed(ConversionType.EXTRACT_AUDIO, "FileNotFound", error.userReadableMessage, request.preset?.id)
+                emit(AppResult.Error(error))
+                return@flow
             }
-        } catch (e: Throwable) {
-            val ioError = ConversionError.IOError("Failed to extract audio track: ${e.message}", e)
-            analyticsTracker.logConversionFailed(ConversionType.EXTRACT_AUDIO, "IOError", ioError.userReadableMessage, request.preset?.id)
-            emit(AppResult.Error(ioError))
-            return@flow
-        }
 
-        // Stage 4: Finalizing
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(90, ConversionProgress(90, ConversionStage.FINALIZING).overallSummary))
+            val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
+                request.outputFileName!!
+            } else {
+                val baseName = sourceFile.nameWithoutExtension.take(20)
+                "audio_${System.currentTimeMillis()}_${baseName}_${UUID.randomUUID().toString().take(4)}.$extension"
+            }
+            val outputFile = File(outputDirectory, outputFileName)
+
+            try {
+                val extracted = extractAudioTrack(sourceFile, outputFile)
+                if (!extracted) {
+                    sourceFile.copyTo(outputFile, overwrite = true)
+                }
+            } catch (e: Throwable) {
+                val ioError = ConversionError.IOError("Failed to extract audio track: ${e.message}", e)
+                analyticsTracker.logConversionFailed(ConversionType.EXTRACT_AUDIO, "IOError", ioError.userReadableMessage, request.preset?.id)
+                emit(AppResult.Error(ioError))
+                return@flow
+            }
+
+            totalOutputSize += outputFile.length()
+            outputUris.add(outputFile.absolutePath)
+        }
 
         val duration = System.currentTimeMillis() - startTime
-        val outputSize = outputFile.length()
-
         analyticsTracker.logConversionCompleted(
             type = ConversionType.EXTRACT_AUDIO,
             durationMs = duration,
-            inputSizeBytes = originalSize,
-            outputSizeBytes = outputSize,
+            inputSizeBytes = totalOriginalSize,
+            outputSizeBytes = totalOutputSize,
             presetId = request.preset?.id
         )
 
@@ -233,11 +250,14 @@ class DefaultMediaEngine(
                 ConversionResult(
                     requestId = request.id,
                     conversionType = ConversionType.EXTRACT_AUDIO,
-                    outputUris = listOf(outputFile.absolutePath),
-                    originalSizeBytes = originalSize,
-                    outputSizeBytes = outputSize,
+                    outputUris = outputUris,
+                    originalSizeBytes = totalOriginalSize,
+                    outputSizeBytes = totalOutputSize,
                     durationMs = duration,
-                    metadata = mapOf("format" to extension.uppercase())
+                    metadata = mapOf(
+                        "format" to extension.uppercase(),
+                        "batchCount" to totalFiles.toString()
+                    )
                 )
             )
         )

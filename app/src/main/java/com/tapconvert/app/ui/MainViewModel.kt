@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import com.tapconvert.core.ads.AdManager
 import com.tapconvert.core.ads.AdReward
 import com.tapconvert.core.ads.DefaultAdManager
+import com.tapconvert.core.ads.TierLimitResult
+import com.tapconvert.core.ads.TierLimitValidator
 import com.tapconvert.core.analytics.AnalyticsTracker
 import com.tapconvert.core.analytics.NoOpAnalyticsTracker
 import com.tapconvert.core.common.AppResult
@@ -49,7 +51,55 @@ class MainViewModel(
     private val _shouldShowInterstitial = MutableStateFlow(false)
     val shouldShowInterstitial: StateFlow<Boolean> = _shouldShowInterstitial.asStateFlow()
 
+    private val _tierLimitExceeded = MutableStateFlow<TierLimitResult.LimitExceeded?>(null)
+    val tierLimitExceeded: StateFlow<TierLimitResult.LimitExceeded?> = _tierLimitExceeded.asStateFlow()
+
+    private var pendingIntakeAction: ((List<String>) -> Unit)? = null
+    private var pendingIntakeUris: List<String> = emptyList()
+
     private var activeJob: Job? = null
+
+    fun checkAndExecuteIntake(
+        sourceUris: List<String>,
+        conversionType: ConversionType,
+        onAllowed: (List<String>) -> Unit
+    ) {
+        val validation = TierLimitValidator.validate(
+            fileCount = sourceUris.size,
+            conversionType = conversionType,
+            adState = adManager.state.value
+        )
+        when (validation) {
+            is TierLimitResult.Allowed -> {
+                onAllowed(sourceUris)
+            }
+            is TierLimitResult.LimitExceeded -> {
+                pendingIntakeAction = onAllowed
+                pendingIntakeUris = sourceUris
+                _tierLimitExceeded.value = validation
+            }
+        }
+    }
+
+    fun dismissTierLimit() {
+        _tierLimitExceeded.value = null
+        pendingIntakeAction = null
+        pendingIntakeUris = emptyList()
+    }
+
+    fun proceedWithClampedLimit(allowedCount: Int) {
+        val clamped = pendingIntakeUris.take(allowedCount)
+        val action = pendingIntakeAction
+        dismissTierLimit()
+        action?.invoke(clamped)
+    }
+
+    fun retryPendingIntakeWithNewTier() {
+        val action = pendingIntakeAction
+        val uris = pendingIntakeUris
+        dismissTierLimit()
+        action?.invoke(uris)
+    }
 
     fun selectPreset(preset: Preset, sourceUris: List<String>) {
         val request = ConversionRequest(
@@ -122,11 +172,13 @@ class MainViewModel(
         if (newUris.isEmpty()) return
 
         val combinedUris = (current.request.sourceUris + newUris).distinct()
-        val combinedNames = combinedUris.map { File(it.removePrefix("file://")).name }
-        _uiState.value = current.copy(
-            request = current.request.copy(sourceUris = combinedUris),
-            sourceFileNames = combinedNames
-        )
+        checkAndExecuteIntake(combinedUris, current.request.conversionType) { allowedUris ->
+            val combinedNames = allowedUris.map { File(it.removePrefix("file://")).name }
+            _uiState.value = current.copy(
+                request = current.request.copy(sourceUris = allowedUris),
+                sourceFileNames = combinedNames
+            )
+        }
     }
 
     fun reorderSourceUris(fromIndex: Int, toIndex: Int) {

@@ -91,4 +91,50 @@ object ShareHelper {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
+
+    fun buildMultipleShareIntent(
+        context: Context,
+        filePathsOrUris: List<String>,
+        explicitMimeType: String? = null
+    ): Intent {
+        val uriList = ArrayList<Uri>()
+        var resolvedMime: String = explicitMimeType ?: "*/*"
+
+        for (path in filePathsOrUris) {
+            val cleanPath = path.removePrefix("file://")
+            val file = File(cleanPath)
+            val uri: Uri? = if (cleanPath.startsWith("content://")) {
+                try { Uri.parse(cleanPath) } catch (_: Throwable) { null }
+            } else if (file.exists()) {
+                if (resolvedMime == "*/*") {
+                    resolvedMime = getMimeTypeForFile(file)
+                }
+                getShareableUri(context, file)
+            } else {
+                try { Uri.parse(path) } catch (_: Throwable) { null }
+            }
+            if (uri != null) {
+                uriList.add(uri)
+            }
+        }
+
+        return Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+            type = resolvedMime
+            putParcelableArrayListExtra(Intent.EXTRA_STREAM, uriList)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    }
+
+    fun createMultipleShareChooserIntent(
+        context: Context,
+        filePathsOrUris: List<String>,
+        explicitMimeType: String? = null,
+        title: String = "Share Converted Files"
+    ): Intent {
+        val shareIntent = buildMultipleShareIntent(context, filePathsOrUris, explicitMimeType)
+        val chooser = Intent.createChooser(shareIntent, title)
+        return chooser ?: shareIntent.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
 }

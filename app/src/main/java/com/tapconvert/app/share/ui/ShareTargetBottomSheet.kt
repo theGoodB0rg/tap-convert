@@ -41,6 +41,7 @@ fun ShareTargetBottomSheet(
     onStartConversion: () -> Unit,
     onCancelConversion: () -> Unit,
     onShareResult: (String) -> Unit,
+    onOpenInFullStudio: () -> Unit = {},
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -139,7 +140,8 @@ fun ShareTargetBottomSheet(
                         onSelectPreset = onSelectPreset,
                         onSelectTargetMime = onSelectTargetMime,
                         onQualityChange = onQualityChange,
-                        onConvertClick = onStartConversion
+                        onConvertClick = onStartConversion,
+                        onOpenInFullStudio = onOpenInFullStudio
                     )
                 }
 
@@ -180,7 +182,8 @@ private fun ReadyContent(
     onSelectPreset: (Preset) -> Unit,
     onSelectTargetMime: (MimeType) -> Unit,
     onQualityChange: (ConversionQuality) -> Unit,
-    onConvertClick: () -> Unit
+    onConvertClick: () -> Unit,
+    onOpenInFullStudio: () -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -344,6 +347,25 @@ private fun ReadyContent(
                 text = if (selectedPreset != null) "Convert & Return: ${selectedPreset.name}" else "Convert & Return: ${selectedTargetMimeType.displayName}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                softWrap = false,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+
+        OutlinedButton(
+            onClick = onOpenInFullStudio,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Open in Full Studio (Advanced)",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis

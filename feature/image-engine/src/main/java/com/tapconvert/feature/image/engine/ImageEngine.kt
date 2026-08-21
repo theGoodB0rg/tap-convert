@@ -34,111 +34,120 @@ class DefaultImageEngine(
         outputDirectory: File
     ): Flow<AppResult<ConversionResult>> = flow {
         val startTime = System.currentTimeMillis()
-        val sourceUri = request.sourceUris.firstOrNull()
-        if (sourceUri == null) {
+        if (request.sourceUris.isEmpty()) {
             val error = ConversionError.FileNotFound("No source URI provided")
             analyticsTracker.logConversionFailed(request.conversionType, "FileNotFound", error.userReadableMessage, request.preset?.id)
             emit(AppResult.Error(error))
             return@flow
         }
 
-        val sourceFile = File(sourceUri.removePrefix("file://"))
-        val originalSize = if (sourceFile.exists()) sourceFile.length() else 0L
-
-        analyticsTracker.logConversionStarted(
-            type = request.conversionType,
-            inputSizeBytes = originalSize,
-            sourceFormat = request.targetMimeType.rawMimeType,
-            presetId = request.preset?.id
-        )
-
-        // Stage 1: Analyzing
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(15, ConversionProgress(15, ConversionStage.ANALYZING).overallSummary))
-
-        if (!sourceFile.exists()) {
-            val error = ConversionError.FileNotFound(sourceUri)
-            analyticsTracker.logConversionFailed(request.conversionType, "FileNotFound", error.userReadableMessage, request.preset?.id)
-            emit(AppResult.Error(error))
-            return@flow
-        }
-
-        // Stage 2: Preparing & Decoding
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(35, ConversionProgress(35, ConversionStage.PREPARING).overallSummary))
-
-        val bitmap = BitmapDecoder.decodeFile(sourceFile, request.dimensionConstraint)
-        if (bitmap == null) {
-            val error = ConversionError.CorruptFile("Failed to decode image bitmap", sourceUri)
-            analyticsTracker.logConversionFailed(request.conversionType, "CorruptFile", error.userReadableMessage, request.preset?.id)
-            emit(AppResult.Error(error))
-            return@flow
-        }
-
-        // Stage 3 & 4: Processing & Compressing
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(65, ConversionProgress(65, ConversionStage.COMPRESSING).overallSummary))
-
+        val totalFiles = request.sourceUris.size
+        val outputUris = mutableListOf<String>()
+        var totalOriginalSize = 0L
+        var totalOutputSize = 0L
         val targetImageFormat = when (val mime = request.targetMimeType) {
             is MimeType.Image -> mime
             else -> MimeType.Image.JPEG
         }
 
-        val outputBytes: ByteArray
-        val targetSize = request.targetSize
-        if (targetSize != null) {
-            when (val compressResult = ImageTargetCompressor.compress(bitmap, targetSize, targetImageFormat)) {
-                is AppResult.Success -> {
-                    outputBytes = compressResult.data.compressedBytes
-                }
-                is AppResult.Error -> {
-                    if (!bitmap.isRecycled) bitmap.recycle()
-                    analyticsTracker.logConversionFailed(request.conversionType, "TargetSizeUnachievable", compressResult.message, request.preset?.id)
-                    emit(compressResult)
-                    return@flow
-                }
-                is AppResult.Progress -> {
-                    outputBytes = ByteArray(0)
-                }
-            }
-        } else {
-            outputBytes = ImageFormatConverter.convert(bitmap, targetImageFormat, request.quality.qualityPercent)
-        }
-
-        if (!bitmap.isRecycled) {
-            bitmap.recycle()
-        }
-
-        // Stage 5: Finalizing & Saving
-        currentCoroutineContext().ensureActive()
-        emit(AppResult.Progress(90, ConversionProgress(90, ConversionStage.FINALIZING).overallSummary))
-
         outputDirectory.mkdirs()
-        val extension = targetImageFormat.primaryExtension
-        val outputFileName = request.outputFileName ?: "img_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.$extension"
-        val outputFile = File(outputDirectory, outputFileName)
 
-        try {
-            FileOutputStream(outputFile).use { it.write(outputBytes) }
-        } catch (e: Throwable) {
-            val ioError = ConversionError.IOError(e.message ?: "Failed to write output file", e)
-            analyticsTracker.logConversionFailed(request.conversionType, "IOError", ioError.userReadableMessage, request.preset?.id)
-            emit(AppResult.Error(ioError))
-            return@flow
-        }
+        analyticsTracker.logConversionStarted(
+            type = request.conversionType,
+            inputSizeBytes = 0L,
+            sourceFormat = request.targetMimeType.rawMimeType,
+            presetId = request.preset?.id
+        )
 
-        if (request.preserveExif && targetImageFormat is MimeType.Image.JPEG) {
-            ExifTransformer.copyExifAttributes(sourceFile, outputFile)
+        request.sourceUris.forEachIndexed { index, uriStr ->
+            currentCoroutineContext().ensureActive()
+            val sourceFile = File(uriStr.removePrefix("file://"))
+            val itemOriginalSize = if (sourceFile.exists()) sourceFile.length() else 0L
+            totalOriginalSize += itemOriginalSize
+
+            val baseProgress = (index.toFloat() / totalFiles.toFloat() * 100f).toInt()
+            emit(AppResult.Progress(
+                percentage = baseProgress + (10 / totalFiles).coerceAtLeast(1),
+                currentStep = "Analyzing file ${index + 1} of $totalFiles: ${sourceFile.name}"
+            ))
+
+            if (!sourceFile.exists()) {
+                val error = ConversionError.FileNotFound(uriStr)
+                analyticsTracker.logConversionFailed(request.conversionType, "FileNotFound", error.userReadableMessage, request.preset?.id)
+                emit(AppResult.Error(error))
+                return@flow
+            }
+
+            val bitmap = BitmapDecoder.decodeFile(sourceFile, request.dimensionConstraint)
+            if (bitmap == null) {
+                val error = ConversionError.CorruptFile("Failed to decode image bitmap", uriStr)
+                analyticsTracker.logConversionFailed(request.conversionType, "CorruptFile", error.userReadableMessage, request.preset?.id)
+                emit(AppResult.Error(error))
+                return@flow
+            }
+
+            emit(AppResult.Progress(
+                percentage = baseProgress + (60 / totalFiles).coerceAtLeast(1),
+                currentStep = "Compressing file ${index + 1} of $totalFiles: ${sourceFile.name}"
+            ))
+
+            val outputBytes: ByteArray
+            val targetSize = request.targetSize
+            if (targetSize != null) {
+                when (val compressResult = ImageTargetCompressor.compress(bitmap, targetSize, targetImageFormat)) {
+                    is AppResult.Success -> {
+                        outputBytes = compressResult.data.compressedBytes
+                    }
+                    is AppResult.Error -> {
+                        if (!bitmap.isRecycled) bitmap.recycle()
+                        analyticsTracker.logConversionFailed(request.conversionType, "TargetSizeUnachievable", compressResult.message, request.preset?.id)
+                        emit(compressResult)
+                        return@flow
+                    }
+                    is AppResult.Progress -> {
+                        outputBytes = ByteArray(0)
+                    }
+                }
+            } else {
+                outputBytes = ImageFormatConverter.convert(bitmap, targetImageFormat, request.quality.qualityPercent)
+            }
+
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+
+            val extension = targetImageFormat.primaryExtension
+            val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
+                request.outputFileName!!
+            } else {
+                val baseName = sourceFile.nameWithoutExtension.take(20)
+                "img_${System.currentTimeMillis()}_${baseName}_${UUID.randomUUID().toString().take(4)}.$extension"
+            }
+            val outputFile = File(outputDirectory, outputFileName)
+
+            try {
+                FileOutputStream(outputFile).use { it.write(outputBytes) }
+            } catch (e: Throwable) {
+                val ioError = ConversionError.IOError(e.message ?: "Failed to write output file", e)
+                analyticsTracker.logConversionFailed(request.conversionType, "IOError", ioError.userReadableMessage, request.preset?.id)
+                emit(AppResult.Error(ioError))
+                return@flow
+            }
+
+            if (request.preserveExif && targetImageFormat is MimeType.Image.JPEG) {
+                ExifTransformer.copyExifAttributes(sourceFile, outputFile)
+            }
+
+            totalOutputSize += outputFile.length()
+            outputUris.add(outputFile.absolutePath)
         }
 
         val duration = System.currentTimeMillis() - startTime
-        val outputSize = outputFile.length()
-
         analyticsTracker.logConversionCompleted(
             type = request.conversionType,
             durationMs = duration,
-            inputSizeBytes = originalSize,
-            outputSizeBytes = outputSize,
+            inputSizeBytes = totalOriginalSize,
+            outputSizeBytes = totalOutputSize,
             presetId = request.preset?.id
         )
 
@@ -147,11 +156,14 @@ class DefaultImageEngine(
                 ConversionResult(
                     requestId = request.id,
                     conversionType = request.conversionType,
-                    outputUris = listOf(outputFile.absolutePath),
-                    originalSizeBytes = originalSize,
-                    outputSizeBytes = outputSize,
+                    outputUris = outputUris,
+                    originalSizeBytes = totalOriginalSize,
+                    outputSizeBytes = totalOutputSize,
                     durationMs = duration,
-                    metadata = mapOf("format" to targetImageFormat.displayName)
+                    metadata = mapOf(
+                        "format" to targetImageFormat.displayName,
+                        "batchCount" to totalFiles.toString()
+                    )
                 )
             )
         )
