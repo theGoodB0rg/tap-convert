@@ -47,6 +47,9 @@ fun ConfigurationScreen(
     onQualityChange: (ConversionQuality) -> Unit,
     onConvertClick: () -> Unit,
     onBackClick: () -> Unit,
+    isPro: Boolean = false,
+    onToggleIncludeBranding: (Boolean) -> Unit = {},
+    onUpgradeProClick: () -> Unit = {},
     onRemoveSourceUri: (Int) -> Unit = {},
     onReorderSourceUris: (Int, Int) -> Unit = { _, _ -> },
     onAddPhotosClick: () -> Unit = {},
@@ -534,6 +537,66 @@ fun ConfigurationScreen(
                                 softWrap = false
                             )
                         }
+                    }
+                }
+            }
+
+            // PDF Document Footer Branding Option
+            if (request.conversionType == ConversionType.IMAGES_TO_PDF) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Page Number & Footer",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (!isPro) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "PRO ONLY",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = if (request.includeBranding) "Includes 'Page X of Y • Converted with TapConvert'" else "Clean PDF export without footer",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Switch(
+                            checked = request.includeBranding,
+                            onCheckedChange = { checked ->
+                                if (!isPro && !checked) {
+                                    onUpgradeProClick()
+                                } else {
+                                    onToggleIncludeBranding(checked)
+                                }
+                            }
+                        )
                     }
                 }
             }

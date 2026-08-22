@@ -14,6 +14,9 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +34,7 @@ import com.tapconvert.app.ui.theme.SavingsGreen
 import com.tapconvert.core.database.entity.ConversionRecordEntity
 import com.tapconvert.core.model.ConversionResult
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResultScreen(
     result: ConversionResult,
@@ -39,6 +43,9 @@ fun ResultScreen(
     onShareMultipleClick: (List<String>) -> Unit = { list -> list.firstOrNull()?.let { onShareClick(it) } },
     onFavoriteToggle: (String, Boolean) -> Unit,
     onDoneClick: () -> Unit,
+    showReviewPrompt: Boolean = false,
+    onReviewAccepted: () -> Unit = {},
+    onReviewDismissed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isFavorited by remember { mutableStateOf(record.isFavorited) }
@@ -117,6 +124,60 @@ fun ResultScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+            }
+        }
+
+        // Single File Branded Export Name Card
+        if (!isBatch) {
+            val singleOutputUri = result.outputUris.firstOrNull()?.removePrefix("file://")
+            val singleOutputFile = singleOutputUri?.let { java.io.File(it) }
+            if (singleOutputFile != null) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primaryContainer),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Description,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = singleOutputFile.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Converted & Saved (${formatBytes(result.outputSizeBytes)})",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = SavingsGreen,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
@@ -543,6 +604,90 @@ fun ResultScreen(
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
+        }
+    }
+
+    // Zero-Cognitive-Load 5-Second Review Bottom Sheet
+    if (showReviewPrompt) {
+        var selectedRating by remember { mutableIntStateOf(5) }
+        ModalBottomSheet(
+            onDismissRequest = onReviewDismissed,
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                    .padding(bottom = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(CircleShape)
+                        .background(SavingsGreen.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "🎉", fontSize = 26.sp)
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "Enjoying TapConvert?",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                    Text(
+                        text = "Rate us in 5 seconds to support 100% offline tools.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    for (star in 1..5) {
+                        IconButton(
+                            onClick = { selectedRating = star },
+                            modifier = Modifier.size(42.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (star <= selectedRating) Icons.Default.Star else Icons.Default.StarBorder,
+                                contentDescription = "$star stars",
+                                tint = if (star <= selectedRating) Color(0xFFFFB800) else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
+                    }
+                }
+
+                Button(
+                    onClick = onReviewAccepted,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                ) {
+                    Text("Rate TapConvert ⭐", fontWeight = FontWeight.Bold)
+                }
+
+                TextButton(
+                    onClick = onReviewDismissed,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Maybe Later",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }

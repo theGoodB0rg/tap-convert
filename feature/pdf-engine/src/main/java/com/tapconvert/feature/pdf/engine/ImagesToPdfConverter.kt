@@ -22,6 +22,7 @@ object ImagesToPdfConverter {
         pageSize: PdfPageSize = PdfPageSize.A4,
         marginPt: Float = 20f,
         autoRotatePage: Boolean = true,
+        includeBranding: Boolean = true,
         dimensionConstraint: DimensionConstraint = DimensionConstraint.None,
         onPageProgress: ((currentPage: Int, totalPages: Int) -> Unit)? = null
     ): AppResult<File> {
@@ -31,9 +32,15 @@ object ImagesToPdfConverter {
 
         val pdfDocument = PdfDocument()
         val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(160, 100, 116, 139)
+            textSize = 9f
+            textAlign = Paint.Align.CENTER
+        }
         var addedPages = 0
 
         try {
+            val reservedBottom = if (includeBranding) 24f else 0f
             imageFiles.forEachIndexed { index, imageFile ->
                 val pageNumber = index + 1
                 onPageProgress?.invoke(pageNumber, imageFiles.size)
@@ -51,7 +58,8 @@ object ImagesToPdfConverter {
                     imageHeight = bitmap.height,
                     pageSize = pageSize,
                     marginPt = marginPt,
-                    autoRotatePage = autoRotatePage
+                    autoRotatePage = autoRotatePage,
+                    reservedBottomMarginPt = reservedBottom
                 )
 
                 val pageInfo = PdfDocument.PageInfo.Builder(
@@ -69,6 +77,14 @@ object ImagesToPdfConverter {
                 )
 
                 page.canvas.drawBitmap(bitmap, null, destRect, paint)
+
+                if (includeBranding) {
+                    val footerText = "Page $pageNumber of ${imageFiles.size} • Converted with TapConvert"
+                    val footerY = layout.pageHeightPt - 8f
+                    val footerX = layout.pageWidthPt / 2f
+                    page.canvas.drawText(footerText, footerX, footerY, textPaint)
+                }
+
                 pdfDocument.finishPage(page)
                 addedPages++
 

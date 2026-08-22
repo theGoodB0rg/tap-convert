@@ -31,5 +31,20 @@ class ConversionRequestTest {
         assertThat(request.dimensionConstraint).isEqualTo(DimensionConstraint.MaxDimension(1280))
         assertThat(request.outputFileName).isEqualTo("whatsapp_out.mp4")
         assertThat(request.preset).isEqualTo(Preset.WhatsAppVideo16MB)
+        assertThat(request.includeBranding).isTrue()
+    }
+
+    @Test
+    fun `includeBranding defaults to true and can be configured`() {
+        val defaultRequest = ConversionRequest(
+            sourceUris = listOf("file:///test.png"),
+            conversionType = ConversionType.IMAGE_CONVERT,
+            targetMimeType = MimeType.Image.JPEG
+        )
+        assertThat(defaultRequest.includeBranding).isTrue()
+
+        val unbrandedRequest = defaultRequest.copy(includeBranding = false)
+        assertThat(unbrandedRequest.includeBranding).isFalse()
     }
 }
+

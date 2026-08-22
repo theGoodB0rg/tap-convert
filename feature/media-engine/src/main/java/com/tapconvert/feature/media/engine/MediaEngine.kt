@@ -95,8 +95,12 @@ class DefaultMediaEngine(
             val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
                 request.outputFileName!!
             } else {
-                val baseName = sourceFile.nameWithoutExtension.take(20)
-                "vid_${System.currentTimeMillis()}_${baseName}_${UUID.randomUUID().toString().take(4)}.mp4"
+                com.tapconvert.core.common.ExportFileNameGenerator.generate(
+                    originalName = sourceFile.name,
+                    extension = "mp4",
+                    batchIndex = if (totalFiles > 1) index + 1 else null,
+                    fallbackName = "Video"
+                )
             }
             val outputFile = File(outputDirectory, outputFileName)
 
@@ -218,8 +222,12 @@ class DefaultMediaEngine(
             val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
                 request.outputFileName!!
             } else {
-                val baseName = sourceFile.nameWithoutExtension.take(20)
-                "audio_${System.currentTimeMillis()}_${baseName}_${UUID.randomUUID().toString().take(4)}.$extension"
+                com.tapconvert.core.common.ExportFileNameGenerator.generate(
+                    originalName = sourceFile.name,
+                    extension = extension,
+                    batchIndex = if (totalFiles > 1) index + 1 else null,
+                    fallbackName = "Audio"
+                )
             }
             val outputFile = File(outputDirectory, outputFileName)
 

@@ -48,6 +48,12 @@ object ShareHelper {
         }
     }
 
+    const val VIRAL_SHARE_SUBJECT = "Converted with TapConvert"
+
+    fun getViralShareBody(packageName: String): String {
+        return "Converted with TapConvert — 100% Offline & Private\nhttps://play.google.com/store/apps/details?id=$packageName"
+    }
+
     fun buildShareIntent(
         context: Context,
         filePathOrUri: String,
@@ -75,6 +81,8 @@ object ShareHelper {
             if (uri != null) {
                 putExtra(Intent.EXTRA_STREAM, uri)
             }
+            putExtra(Intent.EXTRA_SUBJECT, VIRAL_SHARE_SUBJECT)
+            putExtra(Intent.EXTRA_TEXT, getViralShareBody(context.packageName))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -121,6 +129,8 @@ object ShareHelper {
         return Intent(Intent.ACTION_SEND_MULTIPLE).apply {
             type = resolvedMime
             putParcelableArrayListExtra(Intent.EXTRA_STREAM, uriList)
+            putExtra(Intent.EXTRA_SUBJECT, VIRAL_SHARE_SUBJECT)
+            putExtra(Intent.EXTRA_TEXT, getViralShareBody(context.packageName))
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }
@@ -138,3 +148,4 @@ object ShareHelper {
         }
     }
 }
+

@@ -120,8 +120,12 @@ class DefaultImageEngine(
             val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
                 request.outputFileName!!
             } else {
-                val baseName = sourceFile.nameWithoutExtension.take(20)
-                "img_${System.currentTimeMillis()}_${baseName}_${UUID.randomUUID().toString().take(4)}.$extension"
+                com.tapconvert.core.common.ExportFileNameGenerator.generate(
+                    originalName = sourceFile.name,
+                    extension = extension,
+                    batchIndex = if (totalFiles > 1) index + 1 else null,
+                    fallbackName = "Image"
+                )
             }
             val outputFile = File(outputDirectory, outputFileName)
 

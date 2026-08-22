@@ -27,6 +27,10 @@ import com.tapconvert.feature.image.engine.ImageEngine
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import com.tapconvert.feature.media.engine.MediaEngine
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
+import com.tapconvert.core.common.FakeInAppReviewLauncher
+import com.tapconvert.core.common.InAppReviewLauncher
+import com.tapconvert.core.common.InMemoryReviewPromptManager
+import com.tapconvert.core.common.ReviewPromptManager
 import com.tapconvert.feature.pdf.engine.PdfEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +46,8 @@ class MainViewModel(
     private val mediaEngine: MediaEngine = DefaultMediaEngine(),
     private val historyRepository: ConversionHistoryRepository = InMemoryConversionHistoryRepository(),
     val adManager: AdManager = DefaultAdManager(),
+    private val reviewPromptManager: ReviewPromptManager = InMemoryReviewPromptManager(),
+    private val reviewLauncher: InAppReviewLauncher = FakeInAppReviewLauncher(),
     private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
 ) : ViewModel() {
 
@@ -50,6 +56,9 @@ class MainViewModel(
 
     private val _shouldShowInterstitial = MutableStateFlow(false)
     val shouldShowInterstitial: StateFlow<Boolean> = _shouldShowInterstitial.asStateFlow()
+
+    private val _shouldShowReviewPrompt = MutableStateFlow(false)
+    val shouldShowReviewPrompt: StateFlow<Boolean> = _shouldShowReviewPrompt.asStateFlow()
 
     private val _tierLimitExceeded = MutableStateFlow<TierLimitResult.LimitExceeded?>(null)
     val tierLimitExceeded: StateFlow<TierLimitResult.LimitExceeded?> = _tierLimitExceeded.asStateFlow()
@@ -151,6 +160,23 @@ class MainViewModel(
         }
     }
 
+    /**
+     * Updates PDF / document footer branding.
+     * Policy: Only Pro subscribers can disable branding (rewarded ads cannot disable it).
+     * Returns true if applied, false if blocked by non-Pro tier.
+     */
+    fun updateIncludeBranding(includeBranding: Boolean): Boolean {
+        val current = _uiState.value
+        if (current is ConversionUiState.Configuring) {
+            if (!includeBranding && !adManager.state.value.isPro) {
+                return false
+            }
+            _uiState.value = current.copy(request = current.request.copy(includeBranding = includeBranding))
+            return true
+        }
+        return false
+    }
+
     fun removeSourceUri(index: Int) {
         val current = _uiState.value as? ConversionUiState.Configuring ?: return
         if (index !in current.request.sourceUris.indices) return
@@ -238,6 +264,11 @@ class MainViewModel(
                         historyRepository.save(record)
                         adManager.recordConversion()
 
+                        reviewPromptManager.recordSuccessfulConversion()
+                        if (reviewPromptManager.shouldPromptReview()) {
+                            _shouldShowReviewPrompt.value = true
+                        }
+
                         if (adManager.shouldShowInterstitial()) {
                             _shouldShowInterstitial.value = true
                         }
@@ -254,6 +285,21 @@ class MainViewModel(
                     }
                 }
             }
+        }
+    }
+
+    fun onReviewAccepted(activity: android.app.Activity? = null) {
+        _shouldShowReviewPrompt.value = false
+        viewModelScope.launch {
+            reviewPromptManager.recordReviewCompleted()
+            reviewLauncher.launchReview(activity)
+        }
+    }
+
+    fun onReviewDismissed() {
+        _shouldShowReviewPrompt.value = false
+        viewModelScope.launch {
+            reviewPromptManager.recordReviewDismissed()
         }
     }
 

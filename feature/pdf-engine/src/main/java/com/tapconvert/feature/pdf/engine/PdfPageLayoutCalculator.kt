@@ -27,7 +27,8 @@ object PdfPageLayoutCalculator {
         imageHeight: Int,
         pageSize: PdfPageSize = PdfPageSize.A4,
         marginPt: Float = 20f,
-        autoRotatePage: Boolean = true
+        autoRotatePage: Boolean = true,
+        reservedBottomMarginPt: Float = 0f
     ): PageLayout {
         if (imageWidth <= 0 || imageHeight <= 0) {
             return PageLayout(595, 842, 0f, 0f, 0f, 0f)
@@ -36,7 +37,7 @@ object PdfPageLayoutCalculator {
         if (pageSize is PdfPageSize.FitImage) {
             return PageLayout(
                 pageWidthPt = imageWidth,
-                pageHeightPt = imageHeight,
+                pageHeightPt = (imageHeight + reservedBottomMarginPt.roundToInt()).coerceAtLeast(imageHeight),
                 destLeft = 0f,
                 destTop = 0f,
                 destWidth = imageWidth.toFloat(),
@@ -62,8 +63,9 @@ object PdfPageLayoutCalculator {
         }
 
         val safeMargin = marginPt.coerceAtLeast(0f).coerceAtMost(minOf(pageW, pageH) / 4f)
+        val safeBottomExtra = reservedBottomMarginPt.coerceAtLeast(0f)
         val usableW = (pageW - 2 * safeMargin).coerceAtLeast(1f)
-        val usableH = (pageH - 2 * safeMargin).coerceAtLeast(1f)
+        val usableH = (pageH - 2 * safeMargin - safeBottomExtra).coerceAtLeast(1f)
 
         val scaleW = usableW / imageWidth.toFloat()
         val scaleH = usableH / imageHeight.toFloat()
@@ -72,7 +74,7 @@ object PdfPageLayoutCalculator {
         val destW = imageWidth * scale
         val destH = imageHeight * scale
 
-        // Center on page
+        // Center on usable canvas area
         val destLeft = safeMargin + (usableW - destW) / 2f
         val destTop = safeMargin + (usableH - destH) / 2f
 

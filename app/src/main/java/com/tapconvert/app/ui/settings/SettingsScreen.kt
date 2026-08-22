@@ -33,6 +33,7 @@ fun SettingsScreen(
     onResetToDefaultFolderClick: () -> Unit,
     onToggleAutoSaveToGallery: (Boolean) -> Unit,
     onCleanCacheClick: () -> Unit,
+    onRateAppClick: () -> Unit = {},
     onHowToUseClick: () -> Unit,
     onPrivacyPolicyClick: () -> Unit,
     onAboutUsClick: () -> Unit,
@@ -221,6 +222,15 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column {
+                        SettingsNavRow(
+                            icon = Icons.Default.Star,
+                            title = "Rate TapConvert on Play Store",
+                            subtitle = "Help support indie offline tools",
+                            onClick = onRateAppClick
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
                         SettingsNavRow(
                             icon = Icons.Default.Lightbulb,
                             title = "How to Use & Tips",

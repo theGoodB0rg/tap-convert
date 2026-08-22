@@ -173,5 +173,65 @@ class MainViewModelTest {
         assertThat(executedUris).hasSize(8)
         assertThat(viewModel.tierLimitExceeded.value).isNull()
     }
+
+    @Test
+    fun `updateIncludeBranding is blocked for free tier users`() {
+        viewModel.configureCustom(
+            sourceUris = listOf("file:///p1.jpg"),
+            conversionType = com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF,
+            targetMimeType = com.tapconvert.core.model.MimeType.Document.PDF
+        )
+
+        val applied = viewModel.updateIncludeBranding(false)
+        assertThat(applied).isFalse()
+
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.includeBranding).isTrue()
+    }
+
+    @Test
+    fun `updateIncludeBranding is blocked even with rewarded ad unlocks`() {
+        viewModel.configureCustom(
+            sourceUris = listOf("file:///p1.jpg"),
+            conversionType = com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF,
+            targetMimeType = com.tapconvert.core.model.MimeType.Document.PDF
+        )
+
+        viewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+        val applied = viewModel.updateIncludeBranding(false)
+        assertThat(applied).isFalse()
+
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.includeBranding).isTrue()
+    }
+
+    @Test
+    fun `updateIncludeBranding succeeds for Pro subscribers`() {
+        viewModel.configureCustom(
+            sourceUris = listOf("file:///p1.jpg"),
+            conversionType = com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF,
+            targetMimeType = com.tapconvert.core.model.MimeType.Document.PDF
+        )
+
+        viewModel.purchasePro()
+        val applied = viewModel.updateIncludeBranding(false)
+        assertThat(applied).isTrue()
+
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.includeBranding).isFalse()
+    }
+
+    @Test
+    fun `onReviewAccepted marks review completed and dismisses prompt`() {
+        viewModel.onReviewAccepted(null)
+        assertThat(viewModel.shouldShowReviewPrompt.value).isFalse()
+    }
+
+    @Test
+    fun `onReviewDismissed dismisses prompt`() {
+        viewModel.onReviewDismissed()
+        assertThat(viewModel.shouldShowReviewPrompt.value).isFalse()
+    }
 }
+
 

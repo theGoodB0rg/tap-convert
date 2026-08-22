@@ -69,7 +69,11 @@ object PdfToImagesExtractor {
                 page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 page.close()
 
-                val pageFileName = String.format("%s_page_%03d.%s", baseName, pageNumber, ext)
+                val pageFileName = com.tapconvert.core.common.ExportFileNameGenerator.generate(
+                    originalName = "${baseName}_page_$pageNumber",
+                    extension = ext,
+                    fallbackName = "PDF_Page"
+                )
                 val pageFile = File(outputDirectory, pageFileName)
 
                 ImageFormatConverter.convertToFile(bitmap, targetFormat, qualityPercent, pageFile)

@@ -67,13 +67,23 @@ class DefaultPdfEngine(
         emit(AppResult.Progress(10, ConversionProgress(10, ConversionStage.ANALYZING, 1, imageFiles.size).overallSummary))
 
         outputDirectory.mkdirs()
-        val outputName = request.outputFileName ?: "doc_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}.pdf"
+        val outputName = if (!request.outputFileName.isNullOrBlank()) {
+            request.outputFileName!!
+        } else {
+            val firstFileName = imageFiles.firstOrNull()?.name
+            com.tapconvert.core.common.ExportFileNameGenerator.generate(
+                originalName = firstFileName ?: "Document",
+                extension = "pdf",
+                fallbackName = "Document"
+            )
+        }
         val outputFile = File(outputDirectory, outputName)
 
         val conversionResult = ImagesToPdfConverter.convert(
             imageFiles = imageFiles,
             outputFile = outputFile,
             pageSize = pageSize,
+            includeBranding = request.includeBranding,
             dimensionConstraint = request.dimensionConstraint,
             onPageProgress = { current, total ->
                 val pct = 20 + (((current.toFloat() / total.toFloat()) * 70f).toInt())

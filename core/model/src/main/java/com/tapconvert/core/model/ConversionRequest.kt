@@ -13,6 +13,7 @@ data class ConversionRequest(
     val quality: ConversionQuality = ConversionQuality.High,
     val preserveExif: Boolean = true,
     val customAudioBitrateKbps: Int? = null,
+    val includeBranding: Boolean = true,
     val outputFileName: String? = null
 ) {
     init {

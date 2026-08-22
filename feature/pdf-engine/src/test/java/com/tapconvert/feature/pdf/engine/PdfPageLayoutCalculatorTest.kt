@@ -60,4 +60,29 @@ class PdfPageLayoutCalculatorTest {
         assertThat(layout.pageWidthPt).isGreaterThan(0)
         assertThat(layout.pageHeightPt).isGreaterThan(0)
     }
+
+    @Test
+    fun `reservedBottomMarginPt leaves space at bottom for branding footer`() {
+        val layoutWithoutBranding = PdfPageLayoutCalculator.calculateLayout(
+            imageWidth = 2000,
+            imageHeight = 3000,
+            pageSize = PdfPageSize.A4,
+            marginPt = 20f,
+            reservedBottomMarginPt = 0f
+        )
+
+        val layoutWithBranding = PdfPageLayoutCalculator.calculateLayout(
+            imageWidth = 2000,
+            imageHeight = 3000,
+            pageSize = PdfPageSize.A4,
+            marginPt = 20f,
+            reservedBottomMarginPt = 28f
+        )
+
+        // Height of rendered content with branding reservation is less than or equal to without
+        assertThat(layoutWithBranding.destHeight).isLessThan(layoutWithoutBranding.destHeight)
+        // Dest bottom with branding reservation ensures footer clearance
+        assertThat(layoutWithBranding.destBottom).isLessThan(PdfPageSize.A4.HEIGHT_PT.toFloat() - 20f)
+    }
 }
+

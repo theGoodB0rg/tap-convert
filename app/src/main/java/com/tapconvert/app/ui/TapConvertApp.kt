@@ -94,13 +94,18 @@ fun TapConvertApp() {
     val customStorageDisplayPath by settingsManager.customStorageDisplayPath.collectAsState(initial = null)
     val autoSaveToGallery by settingsManager.autoSaveToGallery.collectAsState(initial = true)
 
+    val reviewPromptManager = remember { com.tapconvert.core.common.DataStoreReviewPromptManager.create(context) }
+    val reviewLauncher = remember { com.tapconvert.core.common.PlayStoreFallbackReviewLauncher(context) }
+
     val mainViewModel: MainViewModel = viewModel(factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             val appContext = context.applicationContext
             return MainViewModel(
                 mediaEngine = DefaultMediaEngine.create(appContext),
-                historyRepository = repository
+                historyRepository = repository,
+                reviewPromptManager = reviewPromptManager,
+                reviewLauncher = reviewLauncher
             ) as T
         }
     })
@@ -115,6 +120,7 @@ fun TapConvertApp() {
     val uiState by mainViewModel.uiState.collectAsState()
     val adState by mainViewModel.adManager.state.collectAsState()
     val shouldShowInterstitial by mainViewModel.shouldShowInterstitial.collectAsState()
+    val shouldShowReviewPrompt by mainViewModel.shouldShowReviewPrompt.collectAsState()
     val tierLimitExceeded by mainViewModel.tierLimitExceeded.collectAsState()
 
     val historyRecords by historyViewModel.records.collectAsState()
@@ -710,6 +716,7 @@ fun TapConvertApp() {
                                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                                     }
                                                 },
+                                                onRateAppClick = { mainViewModel.onReviewAccepted(context as? Activity) },
                                                 onHowToUseClick = { settingsSubScreen = SettingsSubScreen.HOW_TO_USE },
                                                 onPrivacyPolicyClick = { settingsSubScreen = SettingsSubScreen.PRIVACY_POLICY },
                                                 onAboutUsClick = { settingsSubScreen = SettingsSubScreen.ABOUT_US },
@@ -746,6 +753,9 @@ fun TapConvertApp() {
                                     mainViewModel.startConversion(outDir)
                                 },
                                 onBackClick = { mainViewModel.resetToIdle() },
+                                isPro = adState.isPro,
+                                onToggleIncludeBranding = { mainViewModel.updateIncludeBranding(it) },
+                                onUpgradeProClick = { showFastPassDialog = true },
                                 onRemoveSourceUri = { index -> mainViewModel.removeSourceUri(index) },
                                 onReorderSourceUris = { from, to -> mainViewModel.reorderSourceUris(from, to) },
                                 onAddPhotosClick = {
@@ -779,7 +789,10 @@ fun TapConvertApp() {
                                     context.startActivity(chooserIntent)
                                 },
                                 onFavoriteToggle = { id, fav -> mainViewModel.toggleFavorite(id, fav) },
-                                onDoneClick = { mainViewModel.resetToIdle() }
+                                onDoneClick = { mainViewModel.resetToIdle() },
+                                showReviewPrompt = shouldShowReviewPrompt,
+                                onReviewAccepted = { mainViewModel.onReviewAccepted(context as? Activity) },
+                                onReviewDismissed = { mainViewModel.onReviewDismissed() }
                             )
                         }
 

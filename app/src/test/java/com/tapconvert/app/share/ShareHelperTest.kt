@@ -48,4 +48,43 @@ class ShareHelperTest {
         )
         assertThat(missingIntent).isNotNull()
     }
+
+    @Test
+    fun `viral share subject and body formatting are correct`() {
+        assertThat(ShareHelper.VIRAL_SHARE_SUBJECT).isEqualTo("Converted with TapConvert")
+        val viralBody = ShareHelper.getViralShareBody("com.tapconvert.app")
+        assertThat(viralBody).contains("Converted with TapConvert — 100% Offline & Private")
+        assertThat(viralBody).contains("https://play.google.com/store/apps/details?id=com.tapconvert.app")
+    }
+
+    @Test
+    fun `buildShareIntent and createShareChooserIntent create valid intents`() {
+        val dummyContext = object : ContextWrapper(null) {
+            override fun getPackageName(): String = "com.tapconvert.app"
+        }
+        val file = tempFolder.newFile("document.pdf")
+
+        val intent = ShareHelper.buildShareIntent(dummyContext, file.absolutePath)
+        assertThat(intent).isNotNull()
+
+        val chooser = ShareHelper.createShareChooserIntent(dummyContext, file.absolutePath)
+        assertThat(chooser).isNotNull()
+    }
+
+    @Test
+    fun `buildMultipleShareIntent and createMultipleShareChooserIntent create valid intents`() {
+        val dummyContext = object : ContextWrapper(null) {
+            override fun getPackageName(): String = "com.tapconvert.app"
+        }
+        val file1 = tempFolder.newFile("img1.jpg")
+        val file2 = tempFolder.newFile("img2.jpg")
+
+        val intent = ShareHelper.buildMultipleShareIntent(dummyContext, listOf(file1.absolutePath, file2.absolutePath))
+        assertThat(intent).isNotNull()
+
+        val chooser = ShareHelper.createMultipleShareChooserIntent(dummyContext, listOf(file1.absolutePath, file2.absolutePath))
+        assertThat(chooser).isNotNull()
+    }
 }
+
+
