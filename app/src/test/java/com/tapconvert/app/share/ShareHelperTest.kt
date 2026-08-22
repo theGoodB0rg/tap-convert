@@ -72,6 +72,16 @@ class ShareHelperTest {
     }
 
     @Test
+    fun `resolveCommonMimeType handles single, same category, and mixed categories correctly`() {
+        assertThat(ShareHelper.resolveCommonMimeType(listOf("image/jpeg"))).isEqualTo("image/jpeg")
+        assertThat(ShareHelper.resolveCommonMimeType(listOf("image/jpeg", "image/jpeg"))).isEqualTo("image/jpeg")
+        assertThat(ShareHelper.resolveCommonMimeType(listOf("image/jpeg", "image/png", "image/webp"))).isEqualTo("image/*")
+        assertThat(ShareHelper.resolveCommonMimeType(listOf("video/mp4", "video/webm"))).isEqualTo("video/*")
+        assertThat(ShareHelper.resolveCommonMimeType(listOf("image/jpeg", "video/mp4"))).isEqualTo("*/*")
+        assertThat(ShareHelper.resolveCommonMimeType(emptyList())).isEqualTo("*/*")
+    }
+
+    @Test
     fun `buildMultipleShareIntent and createMultipleShareChooserIntent create valid intents`() {
         val dummyContext = object : ContextWrapper(null) {
             override fun getPackageName(): String = "com.tapconvert.app"
@@ -86,5 +96,6 @@ class ShareHelperTest {
         assertThat(chooser).isNotNull()
     }
 }
+
 
 
