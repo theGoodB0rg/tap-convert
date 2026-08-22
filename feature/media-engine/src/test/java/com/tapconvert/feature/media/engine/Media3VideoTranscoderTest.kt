@@ -1,0 +1,55 @@
+package com.tapconvert.feature.media.engine
+
+import app.cash.turbine.test
+import com.google.common.truth.Truth.assertThat
+import com.tapconvert.core.common.AppResult
+import com.tapconvert.core.model.TargetSize
+import kotlinx.coroutines.test.runTest
+import org.junit.Before
+import org.junit.Test
+import java.io.File
+
+class Media3VideoTranscoderTest {
+
+    private val tempDir = File(System.getProperty("java.io.tmpdir"), "media3_transcoder_test")
+    private val sourceFile = File(tempDir, "input_test.mp4")
+    private val outputFile = File(tempDir, "output_test.mp4")
+
+    @Before
+    fun setUp() {
+        tempDir.mkdirs()
+        sourceFile.writeBytes(ByteArray(2048) { 0x33 })
+        if (outputFile.exists()) {
+            outputFile.delete()
+        }
+    }
+
+    @Test
+    fun `transcode with null context falls back to file copy and succeeds`() = runTest {
+        val transcoder = Media3VideoTranscoder(context = null)
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 30.0
+        )
+
+        transcoder.transcode(sourceFile, outputFile, spec).test {
+            val p1 = awaitItem()
+            assertThat(p1.isProgress).isTrue()
+            assertThat((p1 as AppResult.Progress).percentage).isEqualTo(100)
+
+            val successItem = awaitItem()
+            assertThat(successItem.isSuccess).isTrue()
+            val resultFile = (successItem as AppResult.Success).data
+            assertThat(resultFile.exists()).isTrue()
+            assertThat(resultFile.length()).isEqualTo(sourceFile.length())
+
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `cancel can be called safely without active session`() {
+        val transcoder = Media3VideoTranscoder(context = null)
+        transcoder.cancel() // Should not throw
+    }
+}

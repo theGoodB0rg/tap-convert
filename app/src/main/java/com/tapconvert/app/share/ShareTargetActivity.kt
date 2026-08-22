@@ -6,6 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -21,11 +23,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import com.tapconvert.app.share.ui.ShareTargetBottomSheet
 import com.tapconvert.app.ui.theme.TapConvertTheme
+import com.tapconvert.core.database.repository.RoomConversionHistoryRepository
+import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import java.io.File
 
 class ShareTargetActivity : ComponentActivity() {
 
-    private val viewModel: ShareTargetViewModel by viewModels()
+    private val viewModel: ShareTargetViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                val appContext = applicationContext
+                val repository = RoomConversionHistoryRepository.create(appContext)
+                return ShareTargetViewModel(
+                    mediaEngine = DefaultMediaEngine.create(appContext),
+                    historyRepository = repository
+                ) as T
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

@@ -1,8 +1,6 @@
 package com.tapconvert.app.ui.components
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -10,8 +8,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.BrokenImage
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,9 +30,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
+import com.tapconvert.core.common.thumbnail.DefaultMediaThumbnailProvider
+import com.tapconvert.core.common.thumbnail.MediaThumbnailProvider
+import com.tapconvert.core.common.thumbnail.ThumbnailResult
+import com.tapconvert.core.model.MediaCategory
 
 @Composable
 fun AsyncThumbnailImage(
@@ -40,25 +42,34 @@ fun AsyncThumbnailImage(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 8.dp,
     targetSizePx: Int = 160,
-    contentScale: ContentScale = ContentScale.Crop
+    contentScale: ContentScale = ContentScale.Crop,
+    thumbnailProvider: MediaThumbnailProvider = DefaultMediaThumbnailProvider.defaultInstance
 ) {
     val context = LocalContext.current
     var bitmap by remember(uriOrPath) { mutableStateOf<Bitmap?>(null) }
+    var fallbackCategory by remember(uriOrPath) { mutableStateOf<MediaCategory?>(null) }
     var isLoading by remember(uriOrPath) { mutableStateOf(true) }
     var isError by remember(uriOrPath) { mutableStateOf(false) }
 
     LaunchedEffect(uriOrPath) {
         isLoading = true
         isError = false
-        val loaded = withContext(Dispatchers.IO) {
-            loadDownsampledBitmap(context, uriOrPath, targetSizePx)
-        }
-        if (loaded != null) {
-            bitmap = loaded
-            isLoading = false
-        } else {
-            isLoading = false
-            isError = true
+        fallbackCategory = null
+        bitmap = null
+
+        when (val result = thumbnailProvider.loadThumbnail(context, uriOrPath, targetSizePx)) {
+            is ThumbnailResult.Loaded -> {
+                bitmap = result.bitmap
+                isLoading = false
+            }
+            is ThumbnailResult.FallbackIcon -> {
+                fallbackCategory = result.category
+                isLoading = false
+            }
+            is ThumbnailResult.Error -> {
+                isLoading = false
+                isError = true
+            }
         }
     }
 
@@ -84,6 +95,20 @@ fun AsyncThumbnailImage(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+            fallbackCategory != null -> {
+                val icon = when (fallbackCategory) {
+                    MediaCategory.VIDEO -> Icons.Default.Videocam
+                    MediaCategory.DOCUMENT -> Icons.Default.PictureAsPdf
+                    MediaCategory.AUDIO -> Icons.Default.Audiotrack
+                    MediaCategory.IMAGE, null -> Icons.Default.Image
+                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = contentDescription,
+                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
             isError -> {
                 Icon(
                     imageVector = Icons.Default.BrokenImage,
@@ -104,66 +129,3 @@ fun AsyncThumbnailImage(
     }
 }
 
-private fun loadDownsampledBitmap(
-    context: android.content.Context,
-    uriOrPath: String,
-    targetSizePx: Int
-): Bitmap? {
-    return try {
-        val cleanPath = uriOrPath.removePrefix("file://")
-        val file = File(cleanPath)
-
-        if (file.exists() && file.length() > 0) {
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            BitmapFactory.decodeFile(file.absolutePath, options)
-
-            options.inSampleSize = calculateInSampleSize(options, targetSizePx, targetSizePx)
-            options.inJustDecodeBounds = false
-            options.inPreferredConfig = Bitmap.Config.RGB_565
-
-            BitmapFactory.decodeFile(file.absolutePath, options)
-        } else if (cleanPath.startsWith("content://")) {
-            val uri = Uri.parse(cleanPath)
-            val options = BitmapFactory.Options().apply {
-                inJustDecodeBounds = true
-            }
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, options)
-            }
-
-            options.inSampleSize = calculateInSampleSize(options, targetSizePx, targetSizePx)
-            options.inJustDecodeBounds = false
-            options.inPreferredConfig = Bitmap.Config.RGB_565
-
-            context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream, null, options)
-            }
-        } else {
-            null
-        }
-    } catch (_: Throwable) {
-        null
-    }
-}
-
-private fun calculateInSampleSize(
-    options: BitmapFactory.Options,
-    reqWidth: Int,
-    reqHeight: Int
-): Int {
-    val height = options.outHeight
-    val width = options.outWidth
-    var inSampleSize = 1
-
-    if (height > reqHeight || width > reqWidth) {
-        val halfHeight = height / 2
-        val halfWidth = width / 2
-
-        while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-            inSampleSize *= 2
-        }
-    }
-    return inSampleSize.coerceAtLeast(1)
-}

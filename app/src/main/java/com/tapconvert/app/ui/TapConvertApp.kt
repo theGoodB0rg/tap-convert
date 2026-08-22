@@ -54,6 +54,7 @@ import com.tapconvert.core.model.ConversionType
 import com.tapconvert.core.model.MediaCategory
 import com.tapconvert.core.model.MimeType
 import com.tapconvert.core.model.Preset
+import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -96,7 +97,11 @@ fun TapConvertApp() {
     val mainViewModel: MainViewModel = viewModel(factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return MainViewModel(historyRepository = repository) as T
+            val appContext = context.applicationContext
+            return MainViewModel(
+                mediaEngine = DefaultMediaEngine.create(appContext),
+                historyRepository = repository
+            ) as T
         }
     })
 

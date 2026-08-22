@@ -1,5 +1,6 @@
 package com.tapconvert.feature.media.engine
 
+import android.content.Context
 import com.tapconvert.core.analytics.AnalyticsTracker
 import com.tapconvert.core.analytics.NoOpAnalyticsTracker
 import com.tapconvert.core.common.AppResult
@@ -320,6 +321,18 @@ class DefaultMediaEngine(
         } finally {
             try { extractor.release() } catch (_: Throwable) {}
             try { muxer?.release() } catch (_: Throwable) {}
+        }
+    }
+
+    companion object {
+        fun create(
+            context: Context,
+            analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
+        ): DefaultMediaEngine {
+            return DefaultMediaEngine(
+                analyticsTracker = analyticsTracker,
+                transcoder = Media3VideoTranscoder(context.applicationContext)
+            )
         }
     }
 }

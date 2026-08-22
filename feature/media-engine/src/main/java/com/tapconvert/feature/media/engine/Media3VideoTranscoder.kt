@@ -6,6 +6,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
 import androidx.media3.transformer.Composition
+import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
@@ -13,6 +14,7 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
+import androidx.media3.transformer.VideoEncoderSettings
 import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.model.ConversionError
 import kotlinx.coroutines.channels.awaitClose
@@ -91,8 +93,17 @@ class Media3VideoTranscoder(
                 }
             }
 
+            val encoderSettings = VideoEncoderSettings.Builder()
+                .setBitrate(encodingSpec.videoBitrateBps)
+                .build()
+
+            val encoderFactory = DefaultEncoderFactory.Builder(currentContext)
+                .setRequestedVideoEncoderSettings(encoderSettings)
+                .build()
+
             val transformer = Transformer.Builder(currentContext)
                 .setTransformationRequest(transformationRequest)
+                .setEncoderFactory(encoderFactory)
                 .addListener(listener)
                 .build()
 
