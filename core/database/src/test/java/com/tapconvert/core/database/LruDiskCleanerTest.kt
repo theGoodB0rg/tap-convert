@@ -96,9 +96,10 @@ class LruDiskCleanerTest {
 
         assertThat(report.filesDeleted).isAtLeast(1)
         assertThat(nonFavFile.exists()).isFalse()
-        assertThat(fakeRepository.getById("rec1")).isNull()
+        // Non-favorited history metadata in database is preserved for lifetime stats and history log
+        assertThat(fakeRepository.getById("rec1")).isNotNull()
 
-        // Favorited record and its file should be preserved
+        // Favorited record and its file should both be preserved
         assertThat(favFile.exists()).isTrue()
         assertThat(fakeRepository.getById("rec2")).isNotNull()
     }

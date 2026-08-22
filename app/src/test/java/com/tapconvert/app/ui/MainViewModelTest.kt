@@ -13,10 +13,16 @@ import com.tapconvert.core.testing.FakeAnalyticsTracker
 import com.tapconvert.feature.image.engine.DefaultImageEngine
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class MainViewModelTest {
+
+    @get:Rule
+    val tempFolder = TemporaryFolder()
 
     private val fakeAnalytics = FakeAnalyticsTracker()
     private val historyRepo = InMemoryConversionHistoryRepository()
@@ -231,6 +237,27 @@ class MainViewModelTest {
     fun `onReviewDismissed dismisses prompt`() {
         viewModel.onReviewDismissed()
         assertThat(viewModel.shouldShowReviewPrompt.value).isFalse()
+    }
+
+    @Test
+    fun `lifetimeReclaimedBytes and lifetimeConversionsCount reflect injected LifetimeStatsManager state`() = runTest {
+        val statsManager = com.tapconvert.core.common.InMemoryLifetimeStatsManager(
+            initialReclaimedBytes = 5_000_000L,
+            initialCount = 3
+        )
+        val vm = MainViewModel(
+            historyRepository = historyRepo,
+            adManager = adManager,
+            analyticsTracker = fakeAnalytics,
+            lifetimeStatsManager = statsManager
+        )
+
+        assertThat(vm.lifetimeReclaimedBytes.first()).isEqualTo(5_000_000L)
+        assertThat(vm.lifetimeConversionsCount.first()).isEqualTo(3)
+
+        statsManager.recordConversion(10_000_000L, 4_000_000L)
+        assertThat(vm.lifetimeReclaimedBytes.first()).isEqualTo(11_000_000L)
+        assertThat(vm.lifetimeConversionsCount.first()).isEqualTo(4)
     }
 }
 

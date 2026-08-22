@@ -26,16 +26,21 @@ import com.tapconvert.feature.image.engine.DefaultImageEngine
 import com.tapconvert.feature.image.engine.ImageEngine
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import com.tapconvert.feature.media.engine.MediaEngine
-import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
 import com.tapconvert.core.common.FakeInAppReviewLauncher
 import com.tapconvert.core.common.InAppReviewLauncher
+import com.tapconvert.core.common.InMemoryLifetimeStatsManager
 import com.tapconvert.core.common.InMemoryReviewPromptManager
+import com.tapconvert.core.common.LifetimeStatsManager
 import com.tapconvert.core.common.ReviewPromptManager
+import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
 import com.tapconvert.feature.pdf.engine.PdfEngine
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -48,8 +53,12 @@ class MainViewModel(
     val adManager: AdManager = DefaultAdManager(),
     private val reviewPromptManager: ReviewPromptManager = InMemoryReviewPromptManager(),
     private val reviewLauncher: InAppReviewLauncher = FakeInAppReviewLauncher(),
+    private val lifetimeStatsManager: LifetimeStatsManager = InMemoryLifetimeStatsManager(),
     private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
 ) : ViewModel() {
+
+    val lifetimeReclaimedBytes: Flow<Long> = lifetimeStatsManager.lifetimeReclaimedBytes
+    val lifetimeConversionsCount: Flow<Int> = lifetimeStatsManager.lifetimeConversionsCount
 
     private val _uiState = MutableStateFlow<ConversionUiState>(ConversionUiState.Idle)
     val uiState: StateFlow<ConversionUiState> = _uiState.asStateFlow()
@@ -263,6 +272,7 @@ class MainViewModel(
                         )
                         historyRepository.save(record)
                         adManager.recordConversion()
+                        lifetimeStatsManager.recordConversion(result.data.originalSizeBytes, result.data.outputSizeBytes)
 
                         reviewPromptManager.recordSuccessfulConversion()
                         if (reviewPromptManager.shouldPromptReview()) {

@@ -54,11 +54,8 @@ class LruDiskCleaner(
                 }
             }
 
-            if (protectFavorites) {
-                repository.deleteNonFavorited()
-            } else {
-                repository.clearAll()
-            }
+            // Preserve database history metadata even when purging temporary physical cache files
+            // so lifetime achievements, statistics, and history log entries remain intact for the user.
         }
 
         // Step 2: Recursively clean all cache and intermediate directories

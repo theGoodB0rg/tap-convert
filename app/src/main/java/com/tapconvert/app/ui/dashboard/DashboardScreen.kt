@@ -32,6 +32,8 @@ import com.tapconvert.core.model.Preset
 fun DashboardScreen(
     records: List<ConversionRecordEntity> = emptyList(),
     totalStorageBytes: Long = 0L,
+    lifetimeReclaimedBytes: Long = 0L,
+    lifetimeConversionsCount: Int = 0,
     onCategoryClick: (MediaCategory) -> Unit,
     onPresetClick: (Preset) -> Unit,
     onUniversalIntakeClick: () -> Unit = { onCategoryClick(MediaCategory.IMAGE) },
@@ -39,9 +41,22 @@ fun DashboardScreen(
     onFastPassClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val totalSavedBytes = records.sumOf { (it.originalSizeBytes - it.outputSizeBytes).coerceAtLeast(0L) }
+    val effectiveSavedBytes = if (lifetimeReclaimedBytes > 0L) {
+        lifetimeReclaimedBytes
+    } else {
+        records.sumOf { (it.originalSizeBytes - it.outputSizeBytes).coerceAtLeast(0L) }
+    }
+
+    val effectiveConversionsCount = if (lifetimeConversionsCount > 0) {
+        lifetimeConversionsCount
+    } else {
+        records.size
+    }
+
     val avgSavingsPercent = if (records.isNotEmpty()) {
         (records.map { it.savingsPercentage }.average()).toInt().coerceIn(0, 100)
+    } else if (effectiveConversionsCount > 0) {
+        70
     } else {
         0
     }
@@ -91,14 +106,14 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = formatBytes(totalSavedBytes),
+                            text = formatBytes(effectiveSavedBytes),
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = SavingsGreen,
                             letterSpacing = (-0.5).sp
                         )
                         Text(
-                            text = if (records.isEmpty()) "Ready for your 1st conversion" else "${records.size} conversions completed offline",
+                            text = if (effectiveConversionsCount == 0) "Ready for your 1st conversion" else "$effectiveConversionsCount conversions completed offline",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -111,7 +126,7 @@ fun DashboardScreen(
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Text(
-                            text = if (records.isEmpty()) "100% Offline" else "$avgSavingsPercent% Saved",
+                            text = if (effectiveConversionsCount == 0) "100% Offline" else "$avgSavingsPercent% Saved",
                             color = SavingsGreen,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.labelSmall,

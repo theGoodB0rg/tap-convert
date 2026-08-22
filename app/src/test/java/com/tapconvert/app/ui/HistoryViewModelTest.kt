@@ -141,6 +141,7 @@ class HistoryViewModelTest {
         assertThat(reportedFiles).isAtLeast(1)
         assertThat(reportedBytes).isAtLeast(800L)
         assertThat(outFile.exists()).isFalse()
-        assertThat(repository.getById("rec_non_fav")).isNull()
+        // History record metadata in database remains intact
+        assertThat(repository.getById("rec_non_fav")).isNotNull()
     }
 }

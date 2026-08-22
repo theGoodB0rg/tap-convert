@@ -96,6 +96,7 @@ fun TapConvertApp() {
 
     val reviewPromptManager = remember { com.tapconvert.core.common.DataStoreReviewPromptManager.create(context) }
     val reviewLauncher = remember { com.tapconvert.core.common.PlayStoreFallbackReviewLauncher(context) }
+    val lifetimeStatsManager = remember { com.tapconvert.core.common.DataStoreLifetimeStatsManager.create(context) }
 
     val mainViewModel: MainViewModel = viewModel(factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -105,7 +106,8 @@ fun TapConvertApp() {
                 mediaEngine = DefaultMediaEngine.create(appContext),
                 historyRepository = repository,
                 reviewPromptManager = reviewPromptManager,
-                reviewLauncher = reviewLauncher
+                reviewLauncher = reviewLauncher,
+                lifetimeStatsManager = lifetimeStatsManager
             ) as T
         }
     })
@@ -121,6 +123,8 @@ fun TapConvertApp() {
     val adState by mainViewModel.adManager.state.collectAsState()
     val shouldShowInterstitial by mainViewModel.shouldShowInterstitial.collectAsState()
     val shouldShowReviewPrompt by mainViewModel.shouldShowReviewPrompt.collectAsState()
+    val lifetimeReclaimedBytes by mainViewModel.lifetimeReclaimedBytes.collectAsState(initial = 0L)
+    val lifetimeConversionsCount by mainViewModel.lifetimeConversionsCount.collectAsState(initial = 0)
     val tierLimitExceeded by mainViewModel.tierLimitExceeded.collectAsState()
 
     val historyRecords by historyViewModel.records.collectAsState()
@@ -612,6 +616,8 @@ fun TapConvertApp() {
                                     DashboardScreen(
                                         records = historyRecords,
                                         totalStorageBytes = totalStorageBytes,
+                                        lifetimeReclaimedBytes = lifetimeReclaimedBytes,
+                                        lifetimeConversionsCount = lifetimeConversionsCount,
                                         onCategoryClick = { category ->
                                             pendingPreset = null
                                             pendingCategory = category
