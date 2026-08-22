@@ -52,4 +52,44 @@ class Media3VideoTranscoderTest {
         val transcoder = Media3VideoTranscoder(context = null)
         transcoder.cancel() // Should not throw
     }
+
+    @Test
+    fun `transcode with injected dispatcher executes successfully`() = runTest {
+        val transcoder = Media3VideoTranscoder(
+            context = null,
+            mainDispatcher = coroutineContext[kotlinx.coroutines.CoroutineDispatcher] ?: kotlinx.coroutines.Dispatchers.Unconfined,
+            looper = null
+        )
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(8),
+            durationSeconds = 15.0
+        )
+
+        transcoder.transcode(sourceFile, outputFile, spec).test {
+            val progress = awaitItem()
+            assertThat(progress.isProgress).isTrue()
+
+            val success = awaitItem()
+            assertThat(success.isSuccess).isTrue()
+            assertThat((success as AppResult.Success).data.exists()).isTrue()
+
+            awaitComplete()
+        }
+    }
+
+    @Test
+    fun `transcode with non-existent source file emits Error`() = runTest {
+        val nonExistentSource = File(tempDir, "missing_${System.currentTimeMillis()}.mp4")
+        val transcoder = Media3VideoTranscoder(context = null)
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 30.0
+        )
+
+        transcoder.transcode(nonExistentSource, outputFile, spec).test {
+            val item = awaitItem()
+            assertThat(item.isError).isTrue()
+            awaitComplete()
+        }
+    }
 }

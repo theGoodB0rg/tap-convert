@@ -329,9 +329,14 @@ class DefaultMediaEngine(
             context: Context,
             analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
         ): DefaultMediaEngine {
+            val appContext = context.applicationContext
             return DefaultMediaEngine(
                 analyticsTracker = analyticsTracker,
-                transcoder = Media3VideoTranscoder(context.applicationContext)
+                transcoder = Media3VideoTranscoder(
+                    context = appContext,
+                    mainDispatcher = Dispatchers.Main.immediate,
+                    looper = appContext.mainLooper
+                )
             )
         }
     }

@@ -2,6 +2,7 @@ package com.tapconvert.feature.media.engine
 
 import android.content.Context
 import android.net.Uri
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.effect.Presentation
@@ -17,6 +18,9 @@ import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.model.ConversionError
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +28,7 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -31,7 +36,9 @@ import java.io.File
  * Performs hardware-accelerated video scaling and bitrate-constrained encoding.
  */
 class Media3VideoTranscoder(
-    private val context: Context? = null
+    private val context: Context? = null,
+    private val mainDispatcher: CoroutineDispatcher = try { Dispatchers.Main.immediate } catch (_: Throwable) { Dispatchers.Unconfined },
+    private val looper: Looper? = try { Looper.getMainLooper() } catch (_: Throwable) { null }
 ) : VideoTranscoder {
 
     private var activeTransformer: Transformer? = null
@@ -101,12 +108,16 @@ class Media3VideoTranscoder(
                 .setRequestedVideoEncoderSettings(encoderSettings)
                 .build()
 
-            val transformer = Transformer.Builder(currentContext)
+            val transformerBuilder = Transformer.Builder(currentContext)
                 .setTransformationRequest(transformationRequest)
                 .setEncoderFactory(encoderFactory)
                 .addListener(listener)
-                .build()
 
+            if (looper != null) {
+                transformerBuilder.setLooper(looper)
+            }
+
+            val transformer = transformerBuilder.build()
             activeTransformer = transformer
 
             val presentationEffect = Presentation.createForHeight(encodingSpec.recommendedMaxDimension)
@@ -118,7 +129,9 @@ class Media3VideoTranscoder(
                 .build()
 
             try {
-                transformer.start(editedMediaItem, outputFile.absolutePath)
+                withContext(mainDispatcher) {
+                    transformer.start(editedMediaItem, outputFile.absolutePath)
+                }
             } catch (e: Throwable) {
                 val error = ConversionError.IOError("Unable to start Media3 Transformer: ${e.message}", e)
                 trySend(AppResult.Error(error))
@@ -126,8 +139,8 @@ class Media3VideoTranscoder(
                 return@callbackFlow
             }
 
-            // Progress polling coroutine
-            val progressJob = launch {
+            // Progress polling coroutine running on mainDispatcher
+            val progressJob = launch(mainDispatcher) {
                 val progressHolder = ProgressHolder()
                 while (isActive) {
                     delay(200)
@@ -141,18 +154,36 @@ class Media3VideoTranscoder(
 
             awaitClose {
                 progressJob.cancel()
-                try {
-                    transformer.cancel()
-                } catch (_: Throwable) {}
+                cancelTransformerSafely(transformer)
                 activeTransformer = null
             }
         }
     }
 
     override fun cancel() {
-        try {
-            activeTransformer?.cancel()
-        } catch (_: Throwable) {}
+        val transformer = activeTransformer ?: return
+        cancelTransformerSafely(transformer)
         activeTransformer = null
+    }
+
+    private fun cancelTransformerSafely(transformer: Transformer) {
+        try {
+            val mainLooper = looper ?: try { Looper.getMainLooper() } catch (_: Throwable) { null }
+            if (mainLooper != null && mainLooper == try { Looper.myLooper() } catch (_: Throwable) { null }) {
+                transformer.cancel()
+            } else if (mainLooper != null) {
+                android.os.Handler(mainLooper).post {
+                    try {
+                        transformer.cancel()
+                    } catch (_: Throwable) {}
+                }
+            } else {
+                transformer.cancel()
+            }
+        } catch (_: Throwable) {
+            try {
+                transformer.cancel()
+            } catch (_: Throwable) {}
+        }
     }
 }
