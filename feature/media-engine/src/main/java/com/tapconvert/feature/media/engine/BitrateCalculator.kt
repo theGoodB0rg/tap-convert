@@ -1,6 +1,8 @@
 package com.tapconvert.feature.media.engine
 
+import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.TargetSize
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 object BitrateCalculator {
@@ -13,39 +15,72 @@ object BitrateCalculator {
     )
 
     const val DEFAULT_AUDIO_BITRATE_BPS = 128_000 // 128 kbps
-    const val MIN_VIDEO_BITRATE_BPS = 250_000     // 250 kbps
+    const val MIN_VIDEO_BITRATE_BPS = 150_000     // 150 kbps
     const val MAX_VIDEO_BITRATE_BPS = 8_000_000   // 8 Mbps
 
     /**
-     * Calculates the optimal video and audio bitrate to fit within targetSize.bytes over durationSeconds.
+     * Calculates the optimal video and audio bitrate and resolution to fit within targetSize or quality constraints.
      */
     fun calculateTargetBitrate(
-        targetSize: TargetSize,
-        durationSeconds: Double,
+        targetSize: TargetSize? = null,
+        durationSeconds: Double = 60.0,
+        sourceSizeBytes: Long = 0L,
+        sourceHeight: Int = 1080,
+        quality: ConversionQuality = ConversionQuality.Medium,
         audioBitrateBps: Int = DEFAULT_AUDIO_BITRATE_BPS,
         containerOverheadPercent: Double = 0.04
     ): VideoEncodingSpec {
         val safeDuration = durationSeconds.coerceAtLeast(1.0)
-        val usableBits = (targetSize.bytes * 8.0 * (1.0 - containerOverheadPercent)).toLong()
-        val totalBitrateBps = (usableBits / safeDuration).roundToInt()
+        val qualityPct = quality.qualityPercent.coerceIn(5, 100)
 
-        val safeAudioBitrate = if (totalBitrateBps < 400_000) {
-            64_000 // Reduce audio to 64kbps on low bitrate allocations
-        } else if (totalBitrateBps < 600_000) {
-            96_000
+        val effectiveTargetBytes: Long = when {
+            targetSize != null -> targetSize.bytes
+            sourceSizeBytes > 0L -> ((sourceSizeBytes * (qualityPct / 100.0)).toLong()).coerceAtLeast(200_000L)
+            else -> TargetSize.fromMegabytes(16).bytes
+        }
+
+        val usableBits = (effectiveTargetBytes * 8.0 * (1.0 - containerOverheadPercent)).toLong()
+        val targetTotalBitrateBps = (usableBits / safeDuration).roundToInt()
+
+        // If source size and duration are known, calculate source baseline bitrate
+        val sourceBitrateBps = if (sourceSizeBytes > 0L) {
+            ((sourceSizeBytes * 8.0) / safeDuration).roundToInt()
         } else {
-            audioBitrateBps
+            MAX_VIDEO_BITRATE_BPS
         }
 
-        val rawVideoBitrate = totalBitrateBps - safeAudioBitrate
-        val finalVideoBitrate = rawVideoBitrate.coerceIn(MIN_VIDEO_BITRATE_BPS, MAX_VIDEO_BITRATE_BPS)
-
-        val recommendedMaxDimension = when {
-            finalVideoBitrate >= 3_000_000 -> 1920 // 1080p
-            finalVideoBitrate >= 1_200_000 -> 1280 // 720p
-            finalVideoBitrate >= 500_000 -> 854    // 480p
-            else -> 640                            // 360p
+        val safeAudioBitrate = when {
+            targetTotalBitrateBps < 300_000 -> 48_000
+            targetTotalBitrateBps < 500_000 -> 64_000
+            targetTotalBitrateBps < 800_000 -> 96_000
+            else -> audioBitrateBps
         }
+
+        val rawVideoBitrate = (targetTotalBitrateBps - safeAudioBitrate).coerceAtLeast(MIN_VIDEO_BITRATE_BPS)
+
+        // When compressing by quality percentage, ensure output video bitrate does not exceed
+        // source bitrate scaled by quality percentage
+        val boundedBySourceBitrate = if (targetSize == null && sourceSizeBytes > 0L) {
+            val sourceVideoBitrateEstimate = (sourceBitrateBps - safeAudioBitrate).coerceAtLeast(MIN_VIDEO_BITRATE_BPS)
+            val scaledBitrate = (sourceVideoBitrateEstimate * (qualityPct / 100.0)).roundToInt()
+            min(rawVideoBitrate, scaledBitrate)
+        } else {
+            rawVideoBitrate
+        }
+
+        val finalVideoBitrate = boundedBySourceBitrate.coerceIn(MIN_VIDEO_BITRATE_BPS, MAX_VIDEO_BITRATE_BPS)
+
+        // Determine recommended height dimension based on bitrate and quality percentage
+        val effectiveSourceHeight = if (sourceHeight > 0) sourceHeight else 1080
+        val maxAllowedHeight = when {
+            finalVideoBitrate < 350_000 || qualityPct <= 20 -> 360
+            finalVideoBitrate < 750_000 || qualityPct <= 40 -> 480
+            finalVideoBitrate < 2_000_000 || qualityPct <= 70 -> 720
+            finalVideoBitrate < 4_500_000 || qualityPct <= 90 -> 1080
+            else -> effectiveSourceHeight
+        }
+
+        val recommendedMaxDimension = min(effectiveSourceHeight, maxAllowedHeight)
 
         val estimatedSizeBytes = (((finalVideoBitrate + safeAudioBitrate) * safeDuration / 8.0) * (1.0 + containerOverheadPercent)).toLong()
 
@@ -56,4 +91,32 @@ object BitrateCalculator {
             estimatedTotalSizeBytes = estimatedSizeBytes
         )
     }
+
+    /**
+     * Backward-compatible overloads.
+     */
+    fun calculateTargetBitrate(
+        targetSize: TargetSize,
+        durationSeconds: Double
+    ): VideoEncodingSpec = calculateTargetBitrate(
+        targetSize = targetSize,
+        durationSeconds = durationSeconds,
+        sourceSizeBytes = 0L,
+        sourceHeight = 1080,
+        quality = ConversionQuality.Medium,
+        audioBitrateBps = DEFAULT_AUDIO_BITRATE_BPS
+    )
+
+    fun calculateTargetBitrate(
+        targetSize: TargetSize,
+        durationSeconds: Double,
+        audioBitrateBps: Int
+    ): VideoEncodingSpec = calculateTargetBitrate(
+        targetSize = targetSize,
+        durationSeconds = durationSeconds,
+        sourceSizeBytes = 0L,
+        sourceHeight = 1080,
+        quality = ConversionQuality.Medium,
+        audioBitrateBps = audioBitrateBps
+    )
 }

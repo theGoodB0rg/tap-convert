@@ -83,10 +83,12 @@ class DefaultMediaEngine(
                 currentStep = ConversionProgress(30, ConversionStage.PREPARING).overallSummary
             ))
 
-            val targetSize = request.targetSize ?: TargetSize.fromMegabytes(16)
             val encodingSpec = BitrateCalculator.calculateTargetBitrate(
-                targetSize = targetSize,
+                targetSize = request.targetSize,
                 durationSeconds = durationSeconds,
+                sourceSizeBytes = originalSize,
+                sourceHeight = mediaInfo?.height ?: 1080,
+                quality = request.quality,
                 audioBitrateBps = request.customAudioBitrateKbps?.let { it * 1000 } ?: BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS
             )
 
