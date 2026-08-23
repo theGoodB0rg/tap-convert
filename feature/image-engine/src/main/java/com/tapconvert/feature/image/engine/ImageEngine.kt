@@ -9,6 +9,7 @@ import com.tapconvert.core.model.ConversionRequest
 import com.tapconvert.core.model.ConversionResult
 import com.tapconvert.core.model.ConversionStage
 import com.tapconvert.core.model.ConversionType
+import com.tapconvert.core.model.DimensionConstraint
 import com.tapconvert.core.model.MimeType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -78,7 +79,19 @@ class DefaultImageEngine(
                 return@flow
             }
 
-            val bitmap = BitmapDecoder.decodeFile(sourceFile, request.dimensionConstraint)
+            val effectiveDimensionConstraint = if (request.dimensionConstraint is DimensionConstraint.None && request.targetSize == null) {
+                val q = request.quality.qualityPercent
+                when {
+                    q <= 20 -> DimensionConstraint.MaxDimension(1280)
+                    q <= 40 -> DimensionConstraint.MaxDimension(1920)
+                    q <= 50 -> DimensionConstraint.MaxDimension(2560)
+                    else -> DimensionConstraint.None
+                }
+            } else {
+                request.dimensionConstraint
+            }
+
+            val bitmap = BitmapDecoder.decodeFile(sourceFile, effectiveDimensionConstraint)
             if (bitmap == null) {
                 val error = ConversionError.CorruptFile("Failed to decode image bitmap", uriStr)
                 analyticsTracker.logConversionFailed(request.conversionType, "CorruptFile", error.userReadableMessage, request.preset?.id)
@@ -94,7 +107,12 @@ class DefaultImageEngine(
             val outputBytes: ByteArray
             val targetSize = request.targetSize
             if (targetSize != null) {
-                when (val compressResult = ImageTargetCompressor.compress(bitmap, targetSize, targetImageFormat)) {
+                when (val compressResult = ImageTargetCompressor.compress(
+                    sourceBitmap = bitmap,
+                    targetSize = targetSize,
+                    targetFormat = targetImageFormat,
+                    originalSizeBytes = itemOriginalSize
+                )) {
                     is AppResult.Success -> {
                         outputBytes = compressResult.data.compressedBytes
                     }

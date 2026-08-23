@@ -5,16 +5,19 @@ import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.model.ConversionError
+import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.DimensionConstraint
 import com.tapconvert.feature.image.engine.BitmapDecoder
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.roundToInt
 
 object ImagesToPdfConverter {
 
     /**
      * Merges a list of image files into a single PDF document.
-     * Uses sequential memory decoding to maintain an O(1) memory footprint.
+     * Uses sequential memory decoding and DPI-aware rasterization to maintain an O(1) memory footprint
+     * and eliminate multi-megabyte PDF file bloat.
      */
     fun convert(
         imageFiles: List<File>,
@@ -23,11 +26,32 @@ object ImagesToPdfConverter {
         marginPt: Float = 20f,
         autoRotatePage: Boolean = true,
         includeBranding: Boolean = true,
+        quality: ConversionQuality = ConversionQuality.Medium,
         dimensionConstraint: DimensionConstraint = DimensionConstraint.None,
         onPageProgress: ((currentPage: Int, totalPages: Int) -> Unit)? = null
     ): AppResult<File> {
         if (imageFiles.isEmpty()) {
             return AppResult.Error(ConversionError.FileNotFound("No image files provided for PDF conversion"))
+        }
+
+        val targetDpi = when {
+            quality.qualityPercent >= 90 -> 200
+            quality.qualityPercent >= 60 -> 150
+            else -> 100
+        }
+
+        val maxPagePt = when (pageSize) {
+            is PdfPageSize.A4 -> maxOf(PdfPageSize.A4.WIDTH_PT, PdfPageSize.A4.HEIGHT_PT)
+            is PdfPageSize.Letter -> maxOf(PdfPageSize.Letter.WIDTH_PT, PdfPageSize.Letter.HEIGHT_PT)
+            is PdfPageSize.Custom -> maxOf(pageSize.widthPt, pageSize.heightPt)
+            is PdfPageSize.FitImage -> 842
+        }
+
+        val dpiMaxPixels = (maxPagePt * (targetDpi / 72f)).roundToInt()
+        val effectiveConstraint = if (dimensionConstraint is DimensionConstraint.None) {
+            DimensionConstraint.MaxDimension(dpiMaxPixels)
+        } else {
+            dimensionConstraint
         }
 
         val pdfDocument = PdfDocument()
@@ -50,7 +74,7 @@ object ImagesToPdfConverter {
                     return AppResult.Error(ConversionError.FileNotFound(imageFile.absolutePath))
                 }
 
-                val bitmap = BitmapDecoder.decodeFile(imageFile, dimensionConstraint)
+                val bitmap = BitmapDecoder.decodeFile(imageFile, effectiveConstraint)
                     ?: return AppResult.Error(ConversionError.CorruptFile("Failed to decode image", imageFile.absolutePath))
 
                 val layout = PdfPageLayoutCalculator.calculateLayout(

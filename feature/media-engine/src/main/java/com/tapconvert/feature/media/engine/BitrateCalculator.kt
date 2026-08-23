@@ -34,6 +34,10 @@ object BitrateCalculator {
         val qualityPct = quality.qualityPercent.coerceIn(5, 100)
 
         val effectiveTargetBytes: Long = when {
+            targetSize != null && sourceSizeBytes > 0L -> {
+                val sourceBudget = (sourceSizeBytes * (qualityPct / 100.0)).toLong()
+                min(targetSize.bytes, sourceBudget).coerceAtLeast(200_000L)
+            }
             targetSize != null -> targetSize.bytes
             sourceSizeBytes > 0L -> ((sourceSizeBytes * (qualityPct / 100.0)).toLong()).coerceAtLeast(200_000L)
             else -> TargetSize.fromMegabytes(16).bytes
@@ -58,11 +62,11 @@ object BitrateCalculator {
 
         val rawVideoBitrate = (targetTotalBitrateBps - safeAudioBitrate).coerceAtLeast(MIN_VIDEO_BITRATE_BPS)
 
-        // When compressing by quality percentage, ensure output video bitrate does not exceed
-        // source bitrate scaled by quality percentage
-        val boundedBySourceBitrate = if (targetSize == null && sourceSizeBytes > 0L) {
+        // Universal Bitrate Ceiling:
+        // When source size is known, output video bitrate must never exceed source video bitrate scaled by quality percentage across ALL modes
+        val boundedBySourceBitrate = if (sourceSizeBytes > 0L) {
             val sourceVideoBitrateEstimate = (sourceBitrateBps - safeAudioBitrate).coerceAtLeast(MIN_VIDEO_BITRATE_BPS)
-            val scaledBitrate = (sourceVideoBitrateEstimate * (qualityPct / 100.0)).roundToInt()
+            val scaledBitrate = (sourceVideoBitrateEstimate * (qualityPct / 100.0)).roundToInt().coerceAtLeast(MIN_VIDEO_BITRATE_BPS)
             min(rawVideoBitrate, scaledBitrate)
         } else {
             rawVideoBitrate

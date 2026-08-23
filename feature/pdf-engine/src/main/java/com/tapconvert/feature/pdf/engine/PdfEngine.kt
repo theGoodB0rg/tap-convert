@@ -84,6 +84,7 @@ class DefaultPdfEngine(
             outputFile = outputFile,
             pageSize = pageSize,
             includeBranding = request.includeBranding,
+            quality = request.quality,
             dimensionConstraint = request.dimensionConstraint,
             onPageProgress = { current, total ->
                 val pct = 20 + (((current.toFloat() / total.toFloat()) * 70f).toInt())

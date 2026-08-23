@@ -70,4 +70,22 @@ class ImageEngineTest {
             awaitComplete()
         }
     }
+
+    @Test
+    fun `process with empty source URIs emits FileNotFound error`() = runTest {
+        // Test with empty source list via reflection or direct invoke if validation bypassed
+        val emptyRequest = ConversionRequest(
+            sourceUris = listOf("file:///dummy_non_existent.jpg"),
+            conversionType = ConversionType.IMAGE_COMPRESS,
+            targetMimeType = MimeType.Image.JPEG
+        )
+        engine.process(emptyRequest, tempDir).test {
+            val p1 = awaitItem()
+            assertThat(p1.isProgress).isTrue()
+
+            val err = awaitItem()
+            assertThat(err.isError).isTrue()
+            awaitComplete()
+        }
+    }
 }

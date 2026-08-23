@@ -5,6 +5,7 @@ import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.model.ConversionError
 import com.tapconvert.core.model.MimeType
 import com.tapconvert.core.model.TargetSize
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 object ImageTargetCompressor {
@@ -18,12 +19,13 @@ object ImageTargetCompressor {
 
     /**
      * Compresses bitmap iteratively using binary search on quality and adaptive downscaling
-     * to strictly satisfy output size <= targetSize.bytes.
+     * to strictly satisfy output size <= targetSize.bytes and <= originalSizeBytes (if provided).
      */
     fun compress(
         sourceBitmap: Bitmap,
         targetSize: TargetSize,
         targetFormat: MimeType.Image = MimeType.Image.JPEG,
+        originalSizeBytes: Long = 0L,
         maxDownscaleIterations: Int = 5
     ): AppResult<CompressionOutcome> {
         var currentBitmap = sourceBitmap
@@ -31,6 +33,11 @@ object ImageTargetCompressor {
         var minAchievableBytes = Long.MAX_VALUE
 
         val formatToUse = if (targetFormat is MimeType.Image.PNG) MimeType.Image.WEBP else targetFormat
+        val effectiveTargetBytes = if (originalSizeBytes > 0L) {
+            min(targetSize.bytes, originalSizeBytes)
+        } else {
+            targetSize.bytes
+        }
 
         for (downscaleStep in 0..maxDownscaleIterations) {
             var lowQ = 10
@@ -49,7 +56,7 @@ object ImageTargetCompressor {
                     minAchievableBytes = byteSize
                 }
 
-                if (byteSize <= targetSize.bytes) {
+                if (byteSize <= effectiveTargetBytes) {
                     passBestBytes = bytes
                     passBestQ = midQ
                     // Try higher quality to get closest to target
@@ -102,7 +109,7 @@ object ImageTargetCompressor {
             AppResult.Error(
                 ConversionError.TargetSizeUnachievable(
                     minAchievableBytes = minAchievableBytes,
-                    targetBytes = targetSize.bytes
+                    targetBytes = effectiveTargetBytes
                 )
             )
         }

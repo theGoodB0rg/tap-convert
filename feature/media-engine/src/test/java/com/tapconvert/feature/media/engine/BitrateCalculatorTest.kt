@@ -83,4 +83,75 @@ class BitrateCalculatorTest {
 
         assertThat(spec.audioBitrateBps).isEqualTo(48_000) // Dropped to 48 kbps on ultra-tight budget
     }
+
+    @Test
+    fun `calculateTargetBitrate with small 4MB video and 16MB WhatsApp preset prevents inflation`() {
+        val source4Mb = 4 * 1024 * 1024L // 4MB in bytes
+        val duration10s = 10.0 // 10 seconds (source video bitrate is approx 3.2 Mbps)
+        val target16Mb = TargetSize.fromMegabytes(16)
+
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = target16Mb,
+            durationSeconds = duration10s,
+            sourceSizeBytes = source4Mb,
+            sourceHeight = 1080,
+            quality = ConversionQuality.Medium // 70%
+        )
+
+        // Estimated output size MUST NOT exceed original source size
+        assertThat(spec.estimatedTotalSizeBytes).isAtMost(source4Mb)
+        // Bitrate MUST NOT exceed source bitrate
+        val maxSourceBitrateBps = ((source4Mb * 8.0) / duration10s).toInt()
+        assertThat(spec.videoBitrateBps).isAtMost(maxSourceBitrateBps)
+    }
+
+    @Test
+    fun `calculateTargetBitrate with small 1MB video and 25MB Discord preset prevents inflation`() {
+        val source1Mb = 1024 * 1024L // 1MB in bytes
+        val duration5s = 5.0
+        val target25Mb = TargetSize.fromMegabytes(25)
+
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = target25Mb,
+            durationSeconds = duration5s,
+            sourceSizeBytes = source1Mb,
+            sourceHeight = 720,
+            quality = ConversionQuality.High // 90%
+        )
+
+        assertThat(spec.estimatedTotalSizeBytes).isAtMost(source1Mb)
+    }
+
+    @Test
+    fun `calculateTargetBitrate monotonicity test over entire quality spectrum`() {
+        val source30Mb = 30 * 1024 * 1024L
+        val duration30s = 30.0
+
+        var previousBitrate = 0
+        var previousSize = 0L
+        var previousDimension = 0
+
+        for (pct in 10..100 step 10) {
+            val spec = BitrateCalculator.calculateTargetBitrate(
+                targetSize = null,
+                durationSeconds = duration30s,
+                sourceSizeBytes = source30Mb,
+                sourceHeight = 1080,
+                quality = ConversionQuality.Custom(pct)
+            )
+
+            // Monotonicity: Each step must be >= the previous step
+            assertThat(spec.videoBitrateBps).isAtLeast(previousBitrate)
+            assertThat(spec.estimatedTotalSizeBytes).isAtLeast(previousSize)
+            assertThat(spec.recommendedMaxDimension).isAtLeast(previousDimension)
+
+            // Even dimension constraint
+            assertThat(spec.recommendedMaxDimension % 2).isEqualTo(0)
+            assertThat(spec.recommendedMaxDimension).isAtLeast(144)
+
+            previousBitrate = spec.videoBitrateBps
+            previousSize = spec.estimatedTotalSizeBytes
+            previousDimension = spec.recommendedMaxDimension
+        }
+    }
 }
