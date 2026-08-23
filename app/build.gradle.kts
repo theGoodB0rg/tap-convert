@@ -98,3 +98,42 @@ dependencies {
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
 }
+
+tasks.register<Copy>("copyDebugApkToDist") {
+    description = "Copies generated debug APK to the root dist/ folder"
+    group = "distribution"
+    from(layout.buildDirectory.dir("outputs/apk/debug"))
+    include("*.apk")
+    into(rootProject.layout.projectDirectory.dir("dist"))
+    rename { "TapConvert-debug.apk" }
+}
+
+tasks.register<Copy>("copyReleaseApkToDist") {
+    description = "Copies generated release APK to the root dist/ folder"
+    group = "distribution"
+    from(layout.buildDirectory.dir("outputs/apk/release"))
+    include("*.apk")
+    into(rootProject.layout.projectDirectory.dir("dist"))
+    rename { "TapConvert-release.apk" }
+}
+
+tasks.register<Copy>("copyReleaseAabToDist") {
+    description = "Copies generated release AAB bundle to the root dist/ folder"
+    group = "distribution"
+    from(layout.buildDirectory.dir("outputs/bundle/release"))
+    include("*.aab")
+    into(rootProject.layout.projectDirectory.dir("dist"))
+    rename { "TapConvert-release.aab" }
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    finalizedBy("copyDebugApkToDist")
+}
+
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    finalizedBy("copyReleaseApkToDist")
+}
+
+tasks.matching { it.name == "bundleRelease" }.configureEach {
+    finalizedBy("copyReleaseAabToDist")
+}

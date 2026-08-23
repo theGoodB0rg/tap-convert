@@ -173,6 +173,9 @@ class ShareTargetViewModel(
                 ConversionType.PDF_TO_IMAGES -> {
                     pdfEngine.extractPdfToImages(request, outputDirectory)
                 }
+                ConversionType.PDF_COMPRESS -> {
+                    pdfEngine.compressPdf(request, outputDirectory)
+                }
                 ConversionType.VIDEO_COMPRESS -> {
                     mediaEngine.compressVideo(request, outputDirectory)
                 }

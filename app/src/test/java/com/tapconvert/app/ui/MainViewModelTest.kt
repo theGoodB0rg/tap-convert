@@ -82,6 +82,19 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `selectPreset with PdfCompressGov500KB initializes PDF_COMPRESS configuration`() {
+        val pdfFile = tempFolder.newFile("document.pdf").apply {
+            writeBytes(ByteArray(2 * 1024 * 1024) { 0x33 }) // 2 MB file
+        }
+
+        viewModel.selectPreset(Preset.PdfCompressGov500KB, listOf("file://${pdfFile.absolutePath}"))
+
+        val state = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(state.request.conversionType).isEqualTo(com.tapconvert.core.model.ConversionType.PDF_COMPRESS)
+        assertThat(state.request.targetSize?.bytes).isEqualTo(500 * 1024L)
+    }
+
+    @Test
     fun `configuration updates modify active request`() {
         viewModel.selectPreset(Preset.GovPassport200KB, listOf("file:///photo.jpg"))
 

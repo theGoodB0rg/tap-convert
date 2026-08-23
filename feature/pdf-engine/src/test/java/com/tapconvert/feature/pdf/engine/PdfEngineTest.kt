@@ -75,4 +75,28 @@ class PdfEngineTest {
         assertThat(fakeAnalytics.startedConversions).hasSize(1)
         assertThat(fakeAnalytics.failedConversions).hasSize(1)
     }
+
+    @Test
+    fun `compressPdf emits error when source PDF does not exist`() = runTest {
+        val request = ConversionRequest(
+            sourceUris = listOf("file:///non_existent_folder/doc.pdf"),
+            conversionType = ConversionType.PDF_COMPRESS,
+            targetMimeType = MimeType.Document.PDF
+        )
+
+        engine.compressPdf(request, tempDir).test {
+            val p1 = awaitItem()
+            assertThat(p1.isProgress).isTrue()
+
+            val err = awaitItem()
+            assertThat(err.isError).isTrue()
+            val error = (err as AppResult.Error).throwable
+            assertThat(error).isInstanceOf(ConversionError.FileNotFound::class.java)
+
+            awaitComplete()
+        }
+
+        assertThat(fakeAnalytics.startedConversions).hasSize(1)
+        assertThat(fakeAnalytics.failedConversions).hasSize(1)
+    }
 }

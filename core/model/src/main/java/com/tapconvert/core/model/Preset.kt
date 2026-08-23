@@ -162,6 +162,41 @@ data class Preset(
             tag = "Documents"
         )
 
+        val PdfCompressEmail2MB = Preset(
+            id = "pdf_compress_email_2mb",
+            name = "Compress PDF (Email 2MB)",
+            description = "Reduce PDF file size under standard 2MB email limit",
+            category = MediaCategory.DOCUMENT,
+            conversionType = ConversionType.PDF_COMPRESS,
+            targetMimeType = MimeType.Document.PDF,
+            targetSize = TargetSize.fromMegabytes(2),
+            quality = ConversionQuality.Medium,
+            tag = "Email"
+        )
+
+        val PdfCompressGov500KB = Preset(
+            id = "pdf_compress_gov_500kb",
+            name = "Compress PDF (Gov Portal 500KB)",
+            description = "Compress PDF document under 500KB for official upload portals",
+            category = MediaCategory.DOCUMENT,
+            conversionType = ConversionType.PDF_COMPRESS,
+            targetMimeType = MimeType.Document.PDF,
+            targetSize = TargetSize.fromKilobytes(500),
+            quality = ConversionQuality.Medium,
+            tag = "Government"
+        )
+
+        val PdfCompressMax = Preset(
+            id = "pdf_compress_max",
+            name = "Compress PDF (Smallest Size)",
+            description = "Maximum compression for ultra-lightweight PDF sharing",
+            category = MediaCategory.DOCUMENT,
+            conversionType = ConversionType.PDF_COMPRESS,
+            targetMimeType = MimeType.Document.PDF,
+            quality = ConversionQuality.Low,
+            tag = "Compact"
+        )
+
         val allPresets: List<Preset> = listOf(
             WhatsAppVideo16MB,
             EmailVideo25MB,
@@ -174,7 +209,10 @@ data class Preset(
             AacStandard256,
             PdfPrintHighRes,
             PdfCompactWeb,
-            PdfToImages
+            PdfToImages,
+            PdfCompressEmail2MB,
+            PdfCompressGov500KB,
+            PdfCompressMax
         )
 
         fun findById(id: String): Preset? = allPresets.find { it.id == id }

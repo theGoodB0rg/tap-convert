@@ -35,6 +35,11 @@ class PresetTest {
         val pdfPresets = Preset.presetsFor(ConversionType.IMAGES_TO_PDF)
         assertThat(pdfPresets).contains(Preset.PdfPrintHighRes)
         assertThat(pdfPresets).contains(Preset.PdfCompactWeb)
+
+        val pdfCompressPresets = Preset.presetsFor(ConversionType.PDF_COMPRESS)
+        assertThat(pdfCompressPresets).contains(Preset.PdfCompressEmail2MB)
+        assertThat(pdfCompressPresets).contains(Preset.PdfCompressGov500KB)
+        assertThat(pdfCompressPresets).contains(Preset.PdfCompressMax)
     }
 
     @Test

@@ -32,6 +32,11 @@ interface PdfEngine {
         targetFormat: MimeType.Image = MimeType.Image.JPEG,
         dpiScale: Float = 2.0f
     ): Flow<AppResult<ConversionResult>>
+
+    fun compressPdf(
+        request: ConversionRequest,
+        outputDirectory: File
+    ): Flow<AppResult<ConversionResult>>
 }
 
 class DefaultPdfEngine(
@@ -223,6 +228,114 @@ class DefaultPdfEngine(
                     presetId = request.preset?.id
                 )
                 emit(extractResult)
+            }
+
+            is AppResult.Progress -> Unit
+        }
+    }.flowOn(Dispatchers.IO)
+
+    override fun compressPdf(
+        request: ConversionRequest,
+        outputDirectory: File
+    ): Flow<AppResult<ConversionResult>> = flow {
+        val startTime = System.currentTimeMillis()
+        val sourceUri = request.sourceUris.firstOrNull()
+
+        if (sourceUri == null) {
+            val error = ConversionError.FileNotFound("No source PDF file provided")
+            analyticsTracker.logConversionFailed(ConversionType.PDF_COMPRESS, "FileNotFound", error.userReadableMessage, request.preset?.id)
+            emit(AppResult.Error(error))
+            return@flow
+        }
+
+        val pdfFile = File(sourceUri.removePrefix("file://"))
+        val inputSize = if (pdfFile.exists()) pdfFile.length() else 0L
+
+        analyticsTracker.logConversionStarted(
+            type = ConversionType.PDF_COMPRESS,
+            inputSizeBytes = inputSize,
+            sourceFormat = "application/pdf",
+            presetId = request.preset?.id
+        )
+
+        // Stage 1: Analyzing
+        currentCoroutineContext().ensureActive()
+        emit(AppResult.Progress(10, ConversionProgress(10, ConversionStage.ANALYZING).overallSummary))
+
+        if (!pdfFile.exists()) {
+            val error = ConversionError.FileNotFound(sourceUri)
+            analyticsTracker.logConversionFailed(ConversionType.PDF_COMPRESS, "FileNotFound", error.userReadableMessage, request.preset?.id)
+            emit(AppResult.Error(error))
+            return@flow
+        }
+
+        outputDirectory.mkdirs()
+        val outputName = if (!request.outputFileName.isNullOrBlank()) {
+            request.outputFileName!!
+        } else {
+            com.tapconvert.core.common.ExportFileNameGenerator.generate(
+                originalName = pdfFile.name,
+                extension = "pdf",
+                fallbackName = "Compressed_Document"
+            )
+        }
+        val outputFile = File(outputDirectory, outputName)
+
+        // Stage 2: Processing / Compressing
+        currentCoroutineContext().ensureActive()
+        emit(AppResult.Progress(20, "Compressing PDF pages..."))
+
+        val compressResult = PdfCompressor.compress(
+            pdfFile = pdfFile,
+            outputFile = outputFile,
+            quality = request.quality,
+            targetSize = request.targetSize,
+            includeBranding = request.includeBranding,
+            dimensionConstraint = request.dimensionConstraint,
+            onPageProgress = { current, total ->
+                val pct = 20 + (((current.toFloat() / total.toFloat()) * 70f).toInt())
+                // Progress
+            }
+        )
+
+        currentCoroutineContext().ensureActive()
+
+        when (compressResult) {
+            is AppResult.Success -> {
+                val outputSize = outputFile.length()
+                val duration = System.currentTimeMillis() - startTime
+
+                analyticsTracker.logConversionCompleted(
+                    type = ConversionType.PDF_COMPRESS,
+                    durationMs = duration,
+                    inputSizeBytes = inputSize,
+                    outputSizeBytes = outputSize,
+                    presetId = request.preset?.id
+                )
+
+                emit(
+                    AppResult.Success(
+                        ConversionResult(
+                            requestId = request.id,
+                            conversionType = ConversionType.PDF_COMPRESS,
+                            outputUris = listOf(outputFile.absolutePath),
+                            originalSizeBytes = inputSize,
+                            outputSizeBytes = outputSize,
+                            durationMs = duration,
+                            metadata = mapOf("compressed" to "true")
+                        )
+                    )
+                )
+            }
+
+            is AppResult.Error -> {
+                analyticsTracker.logConversionFailed(
+                    type = ConversionType.PDF_COMPRESS,
+                    errorType = compressResult.throwable::class.java.simpleName,
+                    errorMessage = compressResult.message,
+                    presetId = request.preset?.id
+                )
+                emit(compressResult)
             }
 
             is AppResult.Progress -> Unit

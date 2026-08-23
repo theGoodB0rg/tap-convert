@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 fun DocumentStudioSheet(
     onPhotosToPdfClick: () -> Unit,
     onPdfToPhotosClick: () -> Unit,
+    onCompressPdfClick: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -64,7 +65,20 @@ fun DocumentStudioSheet(
                 }
             }
 
-            // Option 1: Photos to PDF
+            // Option 1: Compress PDF
+            DocumentStudioOptionCard(
+                title = "Compress PDF (Reduce Size)",
+                subtitle = "Shrink multi-page PDF documents for email attachments and portal uploads.",
+                badgeText = "Save Space",
+                icon = Icons.Default.PictureAsPdf,
+                gradient = Brush.linearGradient(listOf(Color(0xFF10B981), Color(0xFF059669))),
+                onClick = {
+                    onDismiss()
+                    onCompressPdfClick()
+                }
+            )
+
+            // Option 2: Photos to PDF
             DocumentStudioOptionCard(
                 title = "Photos ➔ PDF (Create PDF)",
                 subtitle = "Select photos, preview & reorder pages, and merge into a multi-page PDF.",
@@ -77,7 +91,7 @@ fun DocumentStudioSheet(
                 }
             )
 
-            // Option 2: PDF to Photos
+            // Option 3: PDF to Photos
             DocumentStudioOptionCard(
                 title = "PDF ➔ Photos (Extract Pages)",
                 subtitle = "Select an existing PDF and extract each page as high-res JPG/PNG images.",

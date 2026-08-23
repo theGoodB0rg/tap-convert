@@ -140,6 +140,7 @@ fun TapConvertApp() {
 
     var pendingPreset by remember { mutableStateOf<Preset?>(null) }
     var pendingCategory by remember { mutableStateOf<MediaCategory?>(null) }
+    var pendingConversionType by remember { mutableStateOf<ConversionType?>(null) }
 
     // Layered BackHandler Architecture
     // 1. Settings sub-screens
@@ -203,12 +204,32 @@ fun TapConvertApp() {
 
         val preset = pendingPreset
         val category = pendingCategory
+        val specificType = pendingConversionType
         pendingPreset = null
         pendingCategory = null
+        pendingConversionType = null
 
         if (preset != null) {
             mainViewModel.checkAndExecuteIntake(workingUris, preset.conversionType) { allowed ->
                 mainViewModel.selectPreset(preset, allowed)
+            }
+        } else if (specificType != null) {
+            when (specificType) {
+                ConversionType.PDF_COMPRESS -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.PDF_COMPRESS) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.PDF_COMPRESS, MimeType.Document.PDF)
+                    }
+                }
+                ConversionType.PDF_TO_IMAGES -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.PDF_TO_IMAGES) { allowed ->
+                        mainViewModel.configureCustom(allowed, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
+                    }
+                }
+                else -> {
+                    mainViewModel.checkAndExecuteIntake(workingUris, specificType) { allowed ->
+                        mainViewModel.configureCustom(allowed, specificType, MimeType.Document.PDF)
+                    }
+                }
             }
         } else if (category != null) {
             when (category) {
@@ -362,9 +383,16 @@ fun TapConvertApp() {
         // PDF & Document Studio Sheet
         if (showDocumentStudioSheet) {
             DocumentStudioSheet(
+                onCompressPdfClick = {
+                    pendingPreset = null
+                    pendingCategory = null
+                    pendingConversionType = ConversionType.PDF_COMPRESS
+                    documentPickerLauncher.launch(arrayOf("application/pdf"))
+                },
                 onPhotosToPdfClick = {
                     pendingPreset = null
                     pendingCategory = MediaCategory.DOCUMENT
+                    pendingConversionType = null
                     visualMediaPickerLauncher.launch(
                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                     )
@@ -372,6 +400,7 @@ fun TapConvertApp() {
                 onPdfToPhotosClick = {
                     pendingPreset = null
                     pendingCategory = null
+                    pendingConversionType = ConversionType.PDF_TO_IMAGES
                     documentPickerLauncher.launch(arrayOf("application/pdf"))
                 },
                 onDismiss = { showDocumentStudioSheet = false }
