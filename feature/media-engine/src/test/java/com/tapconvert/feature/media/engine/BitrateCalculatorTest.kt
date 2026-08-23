@@ -13,19 +13,22 @@ class BitrateCalculatorTest {
 
         // 60-second video
         val spec60s = BitrateCalculator.calculateTargetBitrate(target16Mb, durationSeconds = 60.0)
-        assertThat(spec60s.videoBitrateBps).isAtLeast(1_000_000) // ~2.0 Mbps
-        assertThat(spec60s.recommendedMaxDimension).isAtLeast(720) // 720p+
+        assertThat(spec60s.videoBitrateBps).isAtLeast(1_000_000) // ~1.8 Mbps
+        assertThat(spec60s.recommendedMaxDimension).isAtLeast(1280) // 720p+
+        assertThat(spec60s.targetHeight).isAtLeast(720)
 
         // 180-second video (3 minutes)
         val spec180s = BitrateCalculator.calculateTargetBitrate(target16Mb, durationSeconds = 180.0)
-        assertThat(spec180s.videoBitrateBps).isAtLeast(500_000) // ~600 kbps
-        assertThat(spec180s.recommendedMaxDimension).isAtLeast(480)
+        assertThat(spec180s.videoBitrateBps).isAtLeast(400_000) // ~500 kbps
+        assertThat(spec180s.recommendedMaxDimension).isAtLeast(854) // 480p
+        assertThat(spec180s.targetHeight).isAtLeast(480)
 
         // 600-second video (10 minutes)
         val spec600s = BitrateCalculator.calculateTargetBitrate(target16Mb, durationSeconds = 600.0)
         assertThat(spec600s.videoBitrateBps).isAtLeast(BitrateCalculator.MIN_VIDEO_BITRATE_BPS)
         assertThat(spec600s.videoBitrateBps).isLessThan(200_000)
-        assertThat(spec600s.recommendedMaxDimension).isEqualTo(360) // 360p recommended
+        assertThat(spec600s.recommendedMaxDimension).isEqualTo(640) // 360p recommended
+        assertThat(spec600s.targetHeight).isEqualTo(360)
     }
 
     @Test
@@ -46,7 +49,7 @@ class BitrateCalculatorTest {
         assertThat(spec10Pct.estimatedTotalSizeBytes).isLessThan(expectedTargetBytes * 2)
         // Bitrate should be scaled down significantly
         assertThat(spec10Pct.videoBitrateBps).isLessThan(1_000_000) // < 1 Mbps
-        assertThat(spec10Pct.recommendedMaxDimension).isAtMost(480) // Downscaled to 360p or 480p
+        assertThat(spec10Pct.targetHeight).isAtMost(480) // Downscaled to 360p or 480p
     }
 
     @Test
@@ -64,7 +67,8 @@ class BitrateCalculatorTest {
 
         val expectedTargetBytes = (source32_5Mb * 0.50).toLong()
         assertThat(spec50Pct.estimatedTotalSizeBytes).isLessThan((expectedTargetBytes * 1.2).toLong())
-        assertThat(spec50Pct.recommendedMaxDimension).isEqualTo(720) // 720p for 50%
+        assertThat(spec50Pct.recommendedMaxDimension).isEqualTo(1280) // 720p for 50%
+        assertThat(spec50Pct.targetHeight).isEqualTo(720)
     }
 
     @Test
@@ -73,7 +77,8 @@ class BitrateCalculatorTest {
         val spec5s = BitrateCalculator.calculateTargetBitrate(target25Mb, durationSeconds = 5.0)
 
         assertThat(spec5s.videoBitrateBps).isAtMost(BitrateCalculator.MAX_VIDEO_BITRATE_BPS)
-        assertThat(spec5s.recommendedMaxDimension).isEqualTo(1080)
+        assertThat(spec5s.recommendedMaxDimension).isEqualTo(1920)
+        assertThat(spec5s.targetHeight).isEqualTo(1080)
     }
 
     @Test
@@ -81,7 +86,7 @@ class BitrateCalculatorTest {
         val smallTarget = TargetSize.fromMegabytes(1) // 1MB
         val spec = BitrateCalculator.calculateTargetBitrate(smallTarget, durationSeconds = 120.0)
 
-        assertThat(spec.audioBitrateBps).isEqualTo(48_000) // Dropped to 48 kbps on ultra-tight budget
+        assertThat(spec.audioBitrateBps).isEqualTo(32_000) // Dropped to 32 kbps on ultra-tight budget
     }
 
     @Test
@@ -136,6 +141,7 @@ class BitrateCalculatorTest {
                 targetSize = null,
                 durationSeconds = duration30s,
                 sourceSizeBytes = source30Mb,
+                sourceWidth = 1920,
                 sourceHeight = 1080,
                 quality = ConversionQuality.Custom(pct)
             )
@@ -146,12 +152,94 @@ class BitrateCalculatorTest {
             assertThat(spec.recommendedMaxDimension).isAtLeast(previousDimension)
 
             // Even dimension constraint
-            assertThat(spec.recommendedMaxDimension % 2).isEqualTo(0)
-            assertThat(spec.recommendedMaxDimension).isAtLeast(144)
+            assertThat(spec.targetWidth % 2).isEqualTo(0)
+            assertThat(spec.targetHeight % 2).isEqualTo(0)
+            assertThat(spec.targetWidth).isAtLeast(144)
+            assertThat(spec.targetHeight).isAtLeast(144)
 
             previousBitrate = spec.videoBitrateBps
             previousSize = spec.estimatedTotalSizeBytes
             previousDimension = spec.recommendedMaxDimension
         }
+    }
+
+    @Test
+    fun `calculateTargetDimensions preserves portrait aspect ratio without unintended micro-scaling`() {
+        // Portrait 1080x1920 video (e.g. TikTok / Reel)
+        val (w, h) = BitrateCalculator.calculateTargetDimensions(
+            sourceWidth = 1080,
+            sourceHeight = 1920,
+            maxAllowedDimension = 1280
+        )
+
+        // Height should be scaled to 1280, width should be 720
+        assertThat(h).isEqualTo(1280)
+        assertThat(w).isEqualTo(720)
+        assertThat(w % 2).isEqualTo(0)
+        assertThat(h % 2).isEqualTo(0)
+    }
+
+    @Test
+    fun `calculateTargetDimensions preserves ultrawide 21-9 aspect ratio and aligns macroblocks`() {
+        // Ultrawide 2560x1080
+        val (w, h) = BitrateCalculator.calculateTargetDimensions(
+            sourceWidth = 2560,
+            sourceHeight = 1080,
+            maxAllowedDimension = 1920
+        )
+
+        assertThat(w).isEqualTo(1920)
+        assertThat(h).isEqualTo(810)
+        assertThat(w % 2).isEqualTo(0)
+        assertThat(h % 2).isEqualTo(0)
+    }
+
+    @Test
+    fun `calculateTargetDimensions handles odd pixel dimensions gracefully`() {
+        // Odd resolution 1079x1919
+        val (w, h) = BitrateCalculator.calculateTargetDimensions(
+            sourceWidth = 1079,
+            sourceHeight = 1919,
+            maxAllowedDimension = 1280
+        )
+
+        assertThat(w % 2).isEqualTo(0)
+        assertThat(h % 2).isEqualTo(0)
+        assertThat(w).isAtLeast(144)
+        assertThat(h).isAtLeast(144)
+    }
+
+    @Test
+    fun `createCompensatedSpec generates lower bitrate and steps down resolution appropriately`() {
+        val originalSpec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 60.0,
+            sourceSizeBytes = 40 * 1024 * 1024L,
+            sourceWidth = 1920,
+            sourceHeight = 1080,
+            quality = ConversionQuality.Medium
+        )
+
+        val compensated = BitrateCalculator.createCompensatedSpec(originalSpec, reductionFactor = 0.80)
+
+        assertThat(compensated.videoBitrateBps).isLessThan(originalSpec.videoBitrateBps)
+        assertThat(compensated.estimatedTotalSizeBytes).isLessThan(originalSpec.estimatedTotalSizeBytes)
+        assertThat(compensated.targetWidth % 2).isEqualTo(0)
+        assertThat(compensated.targetHeight % 2).isEqualTo(0)
+    }
+
+    @Test
+    fun `effectiveTargetBytes is strictly bounded by quality percent of source`() {
+        val sourceSize = 50 * 1024 * 1024L // 50 MB
+        val targetSize = TargetSize.fromMegabytes(25) // 25 MB
+
+        val spec40Pct = BitrateCalculator.calculateTargetBitrate(
+            targetSize = targetSize,
+            durationSeconds = 60.0,
+            sourceSizeBytes = sourceSize,
+            quality = ConversionQuality.Custom(40) // 40% of 50MB = 20MB (< 25MB target)
+        )
+
+        assertThat(spec40Pct.effectiveTargetBytes).isEqualTo((sourceSize * 0.40).toLong())
     }
 }

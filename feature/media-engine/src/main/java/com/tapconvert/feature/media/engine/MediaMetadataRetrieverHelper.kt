@@ -11,10 +11,15 @@ object MediaMetadataRetrieverHelper {
         val height: Int,
         val rotationDegrees: Int,
         val hasAudio: Boolean,
-        val mimeType: String?
+        val mimeType: String?,
+        val overallBitrateBps: Int = 0,
+        val fileSizeBytes: Long = 0L
     ) {
         val durationSeconds: Double
-            get() = durationMs / 1000.0
+            get() = (durationMs / 1000.0).coerceAtLeast(0.1)
+
+        val isPortrait: Boolean
+            get() = if (rotationDegrees == 90 || rotationDegrees == 270) width > height else height > width
     }
 
     /**
@@ -44,13 +49,18 @@ object MediaMetadataRetrieverHelper {
 
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
 
+            val bitrateStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
+            val bitrate = bitrateStr?.toIntOrNull() ?: 0
+
             MediaInfo(
                 durationMs = durationMs,
                 width = width,
                 height = height,
                 rotationDegrees = rotation,
                 hasAudio = hasAudio,
-                mimeType = mimeType
+                mimeType = mimeType,
+                overallBitrateBps = bitrate,
+                fileSizeBytes = file.length()
             )
         } catch (_: Throwable) {
             null
@@ -61,3 +71,4 @@ object MediaMetadataRetrieverHelper {
         }
     }
 }
+

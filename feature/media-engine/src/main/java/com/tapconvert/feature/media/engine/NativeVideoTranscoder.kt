@@ -95,12 +95,9 @@ class NativeVideoTranscoder : VideoTranscoder {
                 sourceVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
             } catch (_: Throwable) { 30 }.coerceIn(15, 60)
 
-            // Compute target dimensions (must be even integers for H.264 macroblock alignment)
-            val (targetWidth, targetHeight) = computeTargetDimensions(
-                sourceWidth = sourceWidth,
-                sourceHeight = sourceHeight,
-                maxAllowedDimension = encodingSpec.recommendedMaxDimension
-            )
+            // Target dimensions computed from encodingSpec
+            val targetWidth = if (encodingSpec.targetWidth > 0) encodingSpec.targetWidth else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).first
+            val targetHeight = if (encodingSpec.targetHeight > 0) encodingSpec.targetHeight else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).second
 
             val outputVideoMime = MediaFormat.MIMETYPE_VIDEO_AVC
             val targetFormat = MediaFormat.createVideoFormat(outputVideoMime, targetWidth, targetHeight).apply {

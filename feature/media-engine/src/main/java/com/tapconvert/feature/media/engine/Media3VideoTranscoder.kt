@@ -160,11 +160,13 @@ class Media3VideoTranscoder(
         activeTransformer = transformer
 
         val mediaInfo = MediaMetadataRetrieverHelper.extractMediaInfo(sourceFile)
+        val sourceWidth = mediaInfo?.width ?: 1920
         val sourceHeight = mediaInfo?.height ?: 1080
+        val maxSourceDim = maxOf(sourceWidth, sourceHeight)
 
-        // Only attach OpenGL Presentation effect if downscaling is strictly required
-        val effects = if (sourceHeight > encodingSpec.recommendedMaxDimension) {
-            val presentationEffect = Presentation.createForHeight(encodingSpec.recommendedMaxDimension)
+        // Attach OpenGL Presentation effect if downscaling is required
+        val effects = if (maxSourceDim > encodingSpec.recommendedMaxDimension) {
+            val presentationEffect = Presentation.createForHeight(encodingSpec.targetHeight)
             Effects(emptyList(), listOf(presentationEffect))
         } else {
             Effects.EMPTY

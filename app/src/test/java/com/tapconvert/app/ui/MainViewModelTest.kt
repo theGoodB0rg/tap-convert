@@ -56,6 +56,32 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `selectPreset with known large file size dynamically calibrates initial slider percentage`() {
+        val largeFile = tempFolder.newFile("large_video.mp4").apply {
+            writeBytes(ByteArray(40 * 1024 * 1024) { 0x11 }) // 40 MB file
+        }
+
+        // WhatsApp preset is 16 MB -> 16 / 40 * 0.95 * 100 ≈ 38%
+        viewModel.selectPreset(Preset.WhatsAppVideo16MB, listOf("file://${largeFile.absolutePath}"))
+
+        val config = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(config.request.quality.qualityPercent).isIn(35..45)
+    }
+
+    @Test
+    fun `selectPreset with known small file size sets slider to 90 percent to prevent inflation`() {
+        val smallFile = tempFolder.newFile("small_video.mp4").apply {
+            writeBytes(ByteArray(5 * 1024 * 1024) { 0x22 }) // 5 MB file
+        }
+
+        // WhatsApp preset is 16 MB -> since 5MB <= 16MB, slider calibrated to 90%
+        viewModel.selectPreset(Preset.WhatsAppVideo16MB, listOf("file://${smallFile.absolutePath}"))
+
+        val config = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(config.request.quality.qualityPercent).isEqualTo(90)
+    }
+
+    @Test
     fun `configuration updates modify active request`() {
         viewModel.selectPreset(Preset.GovPassport200KB, listOf("file:///photo.jpg"))
 

@@ -55,21 +55,37 @@ fun ConfigurationScreen(
     onAddPhotosClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var sliderPosition by remember { mutableFloatStateOf(request.quality.qualityPercent.toFloat()) }
+    var sliderPosition by remember(request.quality) { mutableFloatStateOf(request.quality.qualityPercent.toFloat()) }
     var showAdvanced by remember { mutableStateOf(false) }
     var previewImageUri by remember { mutableStateOf<String?>(null) }
 
     val isPdfOrMultiFile = request.conversionType == ConversionType.IMAGES_TO_PDF || sourceFileNames.size > 1
 
+    val totalSourceBytes = remember(request.sourceUris) {
+        request.sourceUris.sumOf { uri ->
+            try {
+                val f = File(uri.removePrefix("file://"))
+                if (f.exists()) f.length() else 0L
+            } catch (_: Throwable) { 0L }
+        }
+    }
+
     // Live savings estimate formula based on quality percent
     val estimatedSavingsPct = remember(sliderPosition) {
-        val q = sliderPosition.toInt()
-        when {
-            q <= 40 -> 88
-            q <= 60 -> 78
-            q <= 80 -> 65
-            q <= 90 -> 45
-            else -> 20
+        (100 - sliderPosition.toInt()).coerceIn(5, 95)
+    }
+
+    val estimatedTargetBytes = remember(sliderPosition, totalSourceBytes, request.targetSize) {
+        val reqTarget = request.targetSize
+        if (totalSourceBytes > 0L) {
+            val qualityBudget = (totalSourceBytes * (sliderPosition / 100f)).toLong()
+            if (reqTarget != null) {
+                minOf(reqTarget.bytes, qualityBudget)
+            } else {
+                qualityBudget
+            }
+        } else {
+            reqTarget?.bytes ?: 0L
         }
     }
 
@@ -517,7 +533,7 @@ fun ConfigurationScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "Estimated Reclaimed Space",
+                                    text = if (estimatedTargetBytes > 0L) "Target Output ≈ ${formatSize(estimatedTargetBytes)}" else "Estimated Reclaimed Space",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

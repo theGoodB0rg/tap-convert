@@ -87,10 +87,30 @@ class ShareTargetViewModel(
 
     fun selectPreset(preset: Preset) {
         val current = _uiState.value as? ShareTargetUiState.Ready ?: return
+        val totalSourceSize = current.payload.sourceUris.sumOf { uri ->
+            try {
+                val f = File(uri.removePrefix("file://"))
+                if (f.exists()) f.length() else 0L
+            } catch (_: Throwable) { 0L }
+        }
+
+        val presetTarget = preset.targetSize
+        val calibratedQuality = if (presetTarget != null && totalSourceSize > 0L) {
+            val targetBytes = presetTarget.bytes
+            if (totalSourceSize <= targetBytes) {
+                ConversionQuality.Custom(90)
+            } else {
+                val targetRatio = (targetBytes.toDouble() / totalSourceSize.toDouble() * 0.95 * 100.0).toInt()
+                ConversionQuality.Custom(targetRatio.coerceIn(10, 95))
+            }
+        } else {
+            preset.quality
+        }
+
         _uiState.value = current.copy(
             selectedPreset = preset,
             selectedTargetMimeType = preset.targetMimeType,
-            customQuality = preset.quality,
+            customQuality = calibratedQuality,
             customTargetSize = preset.targetSize
         )
         analyticsTracker.logPresetSelected(preset.id, preset.category)

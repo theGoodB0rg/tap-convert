@@ -77,17 +77,20 @@ class DefaultMediaEngine(
 
             val mediaInfo = MediaMetadataRetrieverHelper.extractMediaInfo(sourceFile)
             val durationSeconds = mediaInfo?.durationSeconds ?: 60.0
+            val sourceWidth = mediaInfo?.width ?: 1920
+            val sourceHeight = mediaInfo?.height ?: 1080
 
             emit(AppResult.Progress(
                 percentage = baseProgress + (25 / totalFiles).coerceAtLeast(1),
                 currentStep = ConversionProgress(30, ConversionStage.PREPARING).overallSummary
             ))
 
-            val encodingSpec = BitrateCalculator.calculateTargetBitrate(
+            var encodingSpec = BitrateCalculator.calculateTargetBitrate(
                 targetSize = request.targetSize,
                 durationSeconds = durationSeconds,
                 sourceSizeBytes = originalSize,
-                sourceHeight = mediaInfo?.height ?: 1080,
+                sourceWidth = sourceWidth,
+                sourceHeight = sourceHeight,
                 quality = request.quality,
                 audioBitrateBps = request.customAudioBitrateKbps?.let { it * 1000 } ?: BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS
             )
@@ -103,26 +106,58 @@ class DefaultMediaEngine(
                 )
             }
             val outputFile = File(outputDirectory, outputFileName)
+            val tempFile = File(outputDirectory, "${outputFileName}.tmp")
 
             var transcodeSuccess = false
             var transcodeError: Throwable? = null
+            var attempt = 1
+            val maxAttempts = 2
 
-            transcoder.transcode(sourceFile, outputFile, encodingSpec).collect { transcodeResult ->
-                when (transcodeResult) {
-                    is AppResult.Progress -> {
-                        val mappedPct = baseProgress + (35 + transcodeResult.percentage * 0.55f) / totalFiles
-                        emit(AppResult.Progress(mappedPct.toInt(), ConversionProgress(mappedPct.toInt(), ConversionStage.COMPRESSING).overallSummary))
+            while (attempt <= maxAttempts && !transcodeSuccess) {
+                if (tempFile.exists()) tempFile.delete()
+
+                val attemptStepDesc = if (attempt > 1) "Compensating compression rate (attempt $attempt)..." else null
+
+                transcoder.transcode(sourceFile, tempFile, encodingSpec).collect { transcodeResult ->
+                    when (transcodeResult) {
+                        is AppResult.Progress -> {
+                            val mappedPct = baseProgress + (35 + transcodeResult.percentage * 0.55f) / totalFiles
+                            val stepText = attemptStepDesc ?: ConversionProgress(mappedPct.toInt(), ConversionStage.COMPRESSING).overallSummary
+                            emit(AppResult.Progress(mappedPct.toInt(), stepText))
+                        }
+                        is AppResult.Success -> {
+                            transcodeSuccess = true
+                        }
+                        is AppResult.Error -> {
+                            transcodeError = transcodeResult.throwable
+                        }
                     }
-                    is AppResult.Success -> {
-                        transcodeSuccess = true
+                }
+
+                if (transcodeSuccess && tempFile.exists() && tempFile.length() > 0L) {
+                    val actualBytes = tempFile.length()
+                    val targetBudget = encodingSpec.effectiveTargetBytes
+
+                    // Closed-Loop Verification:
+                    // If hardware encoder significantly overshot target size (by > 3%),
+                    // trigger 1-pass compensation with reduced bitrate
+                    if (actualBytes > targetBudget * 1.03 && attempt < maxAttempts && originalSize > 0L) {
+                        val overshootFactor = targetBudget.toDouble() / actualBytes.toDouble()
+                        val reduction = (overshootFactor * 0.90).coerceIn(0.60, 0.85)
+                        encodingSpec = BitrateCalculator.createCompensatedSpec(encodingSpec, reduction)
+                        transcodeSuccess = false
+                        attempt++
+                    } else {
+                        break
                     }
-                    is AppResult.Error -> {
-                        transcodeError = transcodeResult.throwable
-                    }
+                } else {
+                    break
                 }
             }
 
-            if (!transcodeSuccess) {
+            if (!transcodeSuccess || !tempFile.exists() || tempFile.length() == 0L) {
+                if (tempFile.exists()) tempFile.delete()
+
                 val failureError = transcodeError?.let {
                     if (it is ConversionError) it else ConversionError.IOError("Transcoding failed: ${it.message}", it)
                 } ?: ConversionError.IOError("Unknown error occurred during video transcoding")
@@ -135,6 +170,14 @@ class DefaultMediaEngine(
                 )
                 emit(AppResult.Error(failureError))
                 return@flow
+            }
+
+            // Atomic rename from staging .tmp to final output
+            if (outputFile.exists()) outputFile.delete()
+            val renamed = tempFile.renameTo(outputFile)
+            if (!renamed) {
+                tempFile.copyTo(outputFile, overwrite = true)
+                tempFile.delete()
             }
 
             totalOutputSize += outputFile.length()
@@ -164,7 +207,7 @@ class DefaultMediaEngine(
                     metadata = mapOf(
                         "videoBitrateBps" to (request.targetSize?.bytes ?: 0L).toString(),
                         "audioBitrateBps" to BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS.toString(),
-                        "maxDimension" to "1280",
+                        "targetMaxDimension" to "1280",
                         "batchCount" to totalFiles.toString()
                     )
                 )

@@ -120,6 +120,30 @@ class MainViewModel(
     }
 
     fun selectPreset(preset: Preset, sourceUris: List<String>) {
+        val totalSourceSize = sourceUris.sumOf { uri ->
+            try {
+                val f = File(uri.removePrefix("file://"))
+                if (f.exists()) f.length() else 0L
+            } catch (_: Throwable) { 0L }
+        }
+
+        val presetTarget = preset.targetSize
+        val calibratedQuality = if (presetTarget != null && totalSourceSize > 0L) {
+            val targetBytes = presetTarget.bytes
+            if (totalSourceSize <= targetBytes) {
+                // Source is already smaller than or equal to preset limit:
+                // Set slider to 90% so compression still happens without size inflation
+                ConversionQuality.Custom(90)
+            } else {
+                // Source is larger than preset limit:
+                // Set slider to the exact ratio needed to reach the preset limit with 5% safety margin
+                val targetRatio = (targetBytes.toDouble() / totalSourceSize.toDouble() * 0.95 * 100.0).toInt()
+                ConversionQuality.Custom(targetRatio.coerceIn(10, 95))
+            }
+        } else {
+            preset.quality
+        }
+
         val request = ConversionRequest(
             sourceUris = sourceUris,
             conversionType = preset.conversionType,
@@ -127,7 +151,7 @@ class MainViewModel(
             preset = preset,
             targetSize = preset.targetSize,
             dimensionConstraint = preset.dimensionConstraint,
-            quality = preset.quality
+            quality = calibratedQuality
         )
         val fileNames = sourceUris.map { File(it.removePrefix("file://")).name }
         _uiState.value = ConversionUiState.Configuring(request, fileNames)
