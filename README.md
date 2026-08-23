@@ -40,6 +40,22 @@ Most online converters force you to upload your personal photos and videos to re
 
 ---
 
+## 📱 App Showcase & Screenshots
+
+<div align="center">
+
+| **1. Dashboard & Quick Actions** | **2. 1-Tap Share Sheet Target** |
+| :---: | :---: |
+| <img src="docs/screenshots/00_dashboard_overview.png" width="420" alt="Dashboard Overview" /> | <img src="docs/screenshots/01_quick_action_share_sheet.png" width="420" alt="Quick Action Share Sheet" /> |
+
+| **3. Offline Video Compression** | **4. Instant Reclaimed Storage Result** |
+| :---: | :---: |
+| <img src="docs/screenshots/03_active_offline_processing.png" width="420" alt="Active Offline Transcoding" /> | <img src="docs/screenshots/04_reclaimed_storage_result.png" width="420" alt="Storage Reclaimed Success" /> |
+
+</div>
+
+---
+
 ## ✨ Superpowers & 1-Tap Presets
 
 ### 📸 1. Image Compressor & Resizer

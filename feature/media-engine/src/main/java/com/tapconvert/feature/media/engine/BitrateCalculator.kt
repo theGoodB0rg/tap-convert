@@ -80,7 +80,9 @@ object BitrateCalculator {
             else -> effectiveSourceHeight
         }
 
-        val recommendedMaxDimension = min(effectiveSourceHeight, maxAllowedHeight)
+        val rawRecommendedHeight = min(effectiveSourceHeight, maxAllowedHeight)
+        // Video codecs strictly require even dimensions (multiples of 2)
+        val recommendedMaxDimension = ((rawRecommendedHeight / 2) * 2).coerceAtLeast(144)
 
         val estimatedSizeBytes = (((finalVideoBitrate + safeAudioBitrate) * safeDuration / 8.0) * (1.0 + containerOverheadPercent)).toLong()
 
