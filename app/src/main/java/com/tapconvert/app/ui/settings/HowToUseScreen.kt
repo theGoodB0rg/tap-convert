@@ -126,7 +126,7 @@ fun HowToUseScreen(
                 summary = "Never guess bitrates or dimensions for specific apps",
                 details = listOf(
                     "• WhatsApp Video (16MB): Compresses videos to fit strictly under WhatsApp's 16MB file transfer limit without failing.",
-                    "• Discord Video (10MB): Fits videos under Discord's free tier upload cap.",
+                    "• Discord Video (10MB): Fits videos under Discord's standard 10MB upload limit.",
                     "• Gov Passport (200KB): Resizes and compresses ID photos strictly under 200KB for government and job portal submissions.",
                     "• JPEG to WebP: Squeezes photos up to 80% smaller with zero visible loss in quality.",
                     "• Extract Audio (MP3): Strips video tracks and saves crisp audio files."
@@ -160,16 +160,16 @@ fun HowToUseScreen(
                 )
             )
 
-            // Guide Item 5: Free, Fast Pass & Pro Limits
+            // Guide Item 5: Capacities, Power Pass & Pro Limits
             GuideCard(
                 icon = Icons.Default.Star,
                 iconTint = AccentAmber,
-                title = "Batch Limits & Fast Pass",
-                summary = "Understand file capacities and free daily rewards",
+                title = "Batch Capacities & TapConvert Pro",
+                summary = "Choose the speed and batch size that fits your routine",
                 details = listOf(
-                    "• Free Tier: Up to 5 photos for PDF and 2 files for batch media conversion.",
-                    "• Fast Pass (24h): Watch a single 30s video to unlock 15 photos for PDF and 10 files for batch media conversion for a full 24 hours.",
-                    "• TapConvert Pro: Unlimited batching up to 500 photos and 100 media files, ultra-fast parallel processing, and permanent 100% ad-free experience."
+                    "• Starter (Free): Up to 5 photos for PDF and 2 files for batch media conversion — ideal for quick everyday tasks.",
+                    "• 24h Power Pass: Watch a short 30s video to instantly unlock 15 photos for PDF and 10 files for batch media for a full 24 hours.",
+                    "• TapConvert Pro: Unlimited batching up to 500 photos and 100 media files, turbo multi-core speed, watermark-free PDF exports, and 100% ad-free experience."
                 )
             )
 

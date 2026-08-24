@@ -64,7 +64,7 @@ object ImagesToPdfConverter {
         var addedPages = 0
 
         try {
-            val reservedBottom = if (includeBranding) 24f else 0f
+            val reservedBottom = 24f
             imageFiles.forEachIndexed { index, imageFile ->
                 val pageNumber = index + 1
                 onPageProgress?.invoke(pageNumber, imageFiles.size)
@@ -75,7 +75,7 @@ object ImagesToPdfConverter {
                 }
 
                 val bitmap = BitmapDecoder.decodeFile(imageFile, effectiveConstraint)
-                    ?: return AppResult.Error(ConversionError.CorruptFile("Failed to decode image", imageFile.absolutePath))
+                    ?: return AppResult.Error(ConversionError.CorruptFile("Failed to decode image ${imageFile.name}"))
 
                 val layout = PdfPageLayoutCalculator.calculateLayout(
                     imageWidth = bitmap.width,
@@ -102,12 +102,14 @@ object ImagesToPdfConverter {
 
                 page.canvas.drawBitmap(bitmap, null, destRect, paint)
 
-                if (includeBranding) {
-                    val footerText = "Page $pageNumber of ${imageFiles.size} • Converted with TapConvert"
-                    val footerY = layout.pageHeightPt - 8f
-                    val footerX = layout.pageWidthPt / 2f
-                    page.canvas.drawText(footerText, footerX, footerY, textPaint)
+                val footerText = if (includeBranding) {
+                    "Page $pageNumber of ${imageFiles.size} • Converted with TapConvert"
+                } else {
+                    "Page $pageNumber of ${imageFiles.size}"
                 }
+                val footerY = layout.pageHeightPt.toFloat() - 8f
+                val footerX = layout.pageWidthPt / 2f
+                page.canvas.drawText(footerText, footerX, footerY, textPaint)
 
                 pdfDocument.finishPage(page)
                 addedPages++

@@ -312,8 +312,8 @@ fun DashboardScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = "Fast Pass",
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Power Pass",
                         tint = AccentAmber,
                         modifier = Modifier.size(22.dp)
                     )
@@ -321,14 +321,14 @@ fun DashboardScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Unlock Batch Mode & Ultra Speed",
+                        text = "Need Heavy Batching or Turbo Speed?",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "Watch a 30s video for 24h Fast-Pass",
+                        text = "Get a 24h Power Pass with a quick video, or upgrade to Pro",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -341,7 +341,7 @@ fun DashboardScreen(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Unlock", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                    Text("Power Up", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                 }
             }
         }

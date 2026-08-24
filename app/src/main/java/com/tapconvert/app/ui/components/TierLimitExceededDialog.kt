@@ -22,7 +22,7 @@ fun TierLimitExceededDialog(
     onUpgradePro: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val title = if (limitInfo.isPdf) "Photos to PDF Limit" else "Batch Media Limit"
+    val title = if (limitInfo.isPdf) "Photos to PDF Limit Reached" else "Batch Limit Reached"
     val unitName = if (limitInfo.isPdf) "photos" else "files"
 
     AlertDialog(
@@ -44,11 +44,11 @@ fun TierLimitExceededDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "You selected ${limitInfo.requestedCount} $unitName. Your current tier allows up to ${limitInfo.allowedCount} $unitName per conversion.",
+                    text = "You selected ${limitInfo.requestedCount} $unitName. Your current plan converts up to ${limitInfo.allowedCount} $unitName at once.",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Text(
-                    text = "Choose an option below to proceed:",
+                    text = "Choose an option below to continue:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -59,16 +59,16 @@ fun TierLimitExceededDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Option 1: Trim to allowed limit (Free)
+                // Option 1: Trim to allowed limit
                 FilledTonalButton(
                     onClick = { onProceedWithLimit(limitInfo.allowedCount) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Keep first ${limitInfo.allowedCount} $unitName (Free)", maxLines = 1, softWrap = false)
+                    Text("Convert first ${limitInfo.allowedCount} $unitName", maxLines = 1, softWrap = false)
                 }
 
-                // Option 2: Watch Ad for 24h Fast Pass (if not already active)
+                // Option 2: Watch Ad for 24h Power Pass (if not already active)
                 if (!limitInfo.isFastPassActive && !limitInfo.isPro) {
                     Button(
                         onClick = onUnlockFastPass,
@@ -79,7 +79,7 @@ fun TierLimitExceededDialog(
                         Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp), tint = AccentAmber)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (limitInfo.isPdf) "Watch Ad: Unlock 15 Photos" else "Watch Ad: Unlock 10 Files",
+                            text = if (limitInfo.isPdf) "⚡ Unlock 15 Photos for 24h (Watch Video)" else "⚡ Unlock 10 Files for 24h (Watch Video)",
                             maxLines = 1,
                             softWrap = false
                         )
@@ -96,7 +96,7 @@ fun TierLimitExceededDialog(
                         Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp), tint = AccentAmber)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (limitInfo.isPdf) "Get Pro (Up to 500 Photos)" else "Get Pro (Up to 100 Files)",
+                            text = if (limitInfo.isPdf) "⭐ Get Pro (Up to 500 Photos)" else "⭐ Get Pro (Up to 100 Files)",
                             maxLines = 1,
                             softWrap = false
                         )

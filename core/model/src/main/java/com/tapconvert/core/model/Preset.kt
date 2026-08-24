@@ -43,8 +43,8 @@ data class Preset(
 
         val DiscordVideo10MB = Preset(
             id = "discord_video_10mb",
-            name = "Discord Free (10MB)",
-            description = "Compress video under Discord 10MB free upload limit",
+            name = "Discord Video (10MB)",
+            description = "Compress video under Discord 10MB upload limit",
             category = MediaCategory.VIDEO,
             conversionType = ConversionType.VIDEO_COMPRESS,
             targetMimeType = MimeType.Video.MP4,

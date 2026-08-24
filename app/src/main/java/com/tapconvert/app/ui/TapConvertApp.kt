@@ -430,7 +430,7 @@ fun TapConvertApp() {
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
-                            text = "⚡ Unlimited Batch Conversions (500+ files)\n⚡ Lightning Fast Offline Transcoding\n⚡ 100% Ad-Free Permanent Experience\n⚡ Custom Cloud & Storage Output",
+                            text = "🚀 Massive Batch Conversions (Up to 500 photos & 100 media files)\n⚡ Maximum Processing Speed (Full multi-core performance)\n🛡️ 100% Ad-Free Experience (Zero interruptions)\n📄 Clean Watermark-Free PDFs (Professional export)",
                             style = MaterialTheme.typography.bodyMedium
                         )
                         if (!adState.isPro) {
@@ -444,7 +444,7 @@ fun TapConvertApp() {
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
-                                Text("Upgrade to Pro Annual ($9.99/yr)", maxLines = 1, softWrap = false)
+                                Text("Upgrade to Pro Annual – $9.99/yr (Best Value)", maxLines = 1, softWrap = false)
                             }
                             OutlinedButton(
                                 onClick = {
@@ -454,7 +454,7 @@ fun TapConvertApp() {
                                 },
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Upgrade to Pro Monthly ($0.99/mo)", maxLines = 1, softWrap = false)
+                                Text("Upgrade to Pro Monthly – $0.99/mo", maxLines = 1, softWrap = false)
                             }
                         }
                     }
@@ -467,7 +467,7 @@ fun TapConvertApp() {
                                 showFastPassDialog = false
                             }
                         ) {
-                            Text("Free 24h Pass (Watch Ad)", maxLines = 1, softWrap = false)
+                            Text("Unlock 24h Power Pass (Watch Quick Video)", maxLines = 1, softWrap = false)
                         }
                     } else {
                         Button(onClick = { showFastPassDialog = false }) {
@@ -578,7 +578,7 @@ fun TapConvertApp() {
                                 if (adState.isBatchModeUnlocked()) {
                                     AssistChip(
                                         onClick = { showFastPassDialog = true },
-                                        label = { Text("Fast Pass Active", maxLines = 1, softWrap = false) },
+                                        label = { Text("⚡ 24h Pass Active", maxLines = 1, softWrap = false) },
                                         leadingIcon = {
                                             Icon(
                                                 imageVector = Icons.Default.Star,
@@ -601,7 +601,7 @@ fun TapConvertApp() {
                                             tint = AccentAmber
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Fast Pass", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                        Text("⚡ Power Pass", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
                                     }
                                 }
                             }

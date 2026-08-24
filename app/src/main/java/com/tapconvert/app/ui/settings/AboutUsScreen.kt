@@ -97,7 +97,7 @@ fun AboutUsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "TapConvert was built to provide lightning-fast, high-fidelity media conversions right on your Android device. No subscriptions, no cloud wait times, and zero privacy compromises.",
+                        text = "TapConvert was built to provide lightning-fast, high-fidelity media conversions right on your Android device. Always 100% on-device, private, and built for speed without annoying cloud queues or personal data tracking.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurface
                     )

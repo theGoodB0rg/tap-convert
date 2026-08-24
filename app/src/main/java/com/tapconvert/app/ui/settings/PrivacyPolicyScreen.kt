@@ -61,8 +61,8 @@ fun PrivacyPolicyScreen(
             )
 
             PolicySection(
-                title = "4. Advertisements",
-                body = "TapConvert utilizes Google AdMob to display optional rewarded ads for features like Fast Pass batch unlocks. No personally identifiable media information is shared with ad providers."
+                title = "4. Advertisements & In-App Purchases",
+                body = "TapConvert utilizes Google AdMob to display optional rewarded ads for temporary Power Pass batch unlocks, and Google Play Billing for TapConvert Pro subscriptions. No media files, personal documents, or sensitive data are ever shared with ad networks or payment processors."
             )
 
             PolicySection(

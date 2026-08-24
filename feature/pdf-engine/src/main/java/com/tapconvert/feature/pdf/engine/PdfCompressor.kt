@@ -170,12 +170,14 @@ object PdfCompressor {
                     val destRect = RectF(0f, 0f, origWidthPt.toFloat(), origHeightPt.toFloat())
                     pdfPage.canvas?.drawBitmap(bitmap, null, destRect, paint)
 
-                    if (includeBranding) {
-                        val footerText = "Page $pageNumber of $pageCount • Compressed with TapConvert"
-                        val footerY = origHeightPt.toFloat() - 8f
-                        val footerX = origWidthPt.toFloat() / 2f
-                        pdfPage.canvas?.drawText(footerText, footerX, footerY, textPaint)
+                    val footerText = if (includeBranding) {
+                        "Page $pageNumber of $pageCount • Compressed with TapConvert"
+                    } else {
+                        "Page $pageNumber of $pageCount"
                     }
+                    val footerY = origHeightPt.toFloat() - 8f
+                    val footerX = origWidthPt.toFloat() / 2f
+                    pdfPage.canvas?.drawText(footerText, footerX, footerY, textPaint)
 
                     doc.finishPage(pdfPage)
                 }

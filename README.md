@@ -2,10 +2,10 @@
 
 # ⚡ TapConvert
 
-### The lightning-fast, 100% offline media compressor & converter for Android.
+### The lightning-fast, 100% on-device media compressor & converter for Android.
 
 **Resize photos to exact KB for government portals • Squash videos for Discord & WhatsApp • Extract MP3s • Convert PDFs**  
-*No cloud uploads. No subscriptions. No ads selling your data. Completely open-source.*
+*100% On-Device & Private. Instant conversions without cloud queues or data tracking.*
 
 <br/>
 
@@ -18,7 +18,7 @@
 
 <br/>
 
-[**⭐ Star this repo on GitHub**](https://github.com/theGoodB0rg/tap-convert) — *It helps more people discover free, private media tools!*
+[**⭐ Star this repo on GitHub**](https://github.com/theGoodB0rg/tap-convert) — *It helps more people discover fast, private media tools!*
 
 </div>
 
@@ -33,10 +33,24 @@ Most online converters force you to upload your personal photos and videos to re
 | Feature | Shady Web Converters 🌐 | Generic Ad-Filled Apps 📱 | **TapConvert ⚡** |
 | :--- | :---: | :---: | :---: |
 | **Privacy & Security** | Uploaded to third-party servers | Loaded with trackers | **100% On-Device & Offline** |
-| **File Size Limits** | 5MB – 15MB caps | Requires Pro tier | **Unlimited (Hardware capacity)** |
+| **Processing Speed** | Cloud queues & upload wait times | Sluggish & heavy | **Instant Hardware Acceleration** |
 | **1-Tap Quick Presets** | ❌ (Manual sliders only) | ❌ (Confusing menus) | **✅ Discord, WhatsApp, Gov ID, etc.** |
 | **System Share Sheet** | ❌ (Must open browser) | ⚠️ (Hit or miss) | **✅ 1-Tap Convert from any app** |
-| **Cost & Watermarks** | Watermarks / Subscriptions | Annoying video ads | **100% Free & Open Source (MIT)** |
+| **Fair Monetization** | Watermarks / Hidden weekly billing | Aggressive popup ads | **Generous Free Tier • 24h Pass • Pro** |
+
+---
+
+## 💎 Tier Breakdown & TapConvert Pro
+
+TapConvert provides a flexible ladder designed for everyday convenience and power-user throughput:
+
+- **🌱 Starter (Free)**: Quick 1-tap single & small batch conversions (up to 5 photos for PDF, 2 files for batch media) — ideal for daily needs.
+- **⚡ 24-Hour Power Pass (Rewarded)**: Watch a quick 30s video to instantly unlock higher batch limits (15 photos, 10 files) for a full 24 hours.
+- **⭐ TapConvert Pro (Monthly / Annual)**: Built for power users:
+  - 🚀 **Massive Batch Conversions**: Up to 500 photos & 100 media files in a single tap.
+  - ⚡ **Turbo Multi-Core Speed**: Full native hardware acceleration.
+  - 📄 **Clean Watermark-Free PDFs**: Professional exports with clean page numbering (`Page 1 of 5`) without app branding.
+  - 🛡️ **100% Ad-Free Experience**: Uninterrupted, permanent workflow.
 
 ---
 
@@ -64,7 +78,7 @@ Most online converters force you to upload your personal photos and videos to re
 * **Resolution Scaling**: Scale dimensions proportionally (1080p, 720p, or custom pixel dimensions).
 
 ### 🎬 2. Video Compressor & Optimizer
-* **Discord Preset**: Compress clips down to **8MB**, **25MB**, or **50MB** for free Discord sharing with crisp audio.
+* **Discord Preset**: Compress clips down to **8MB**, **25MB**, or **50MB** for Discord sharing with crisp audio.
 * **WhatsApp Preset**: Squash lengthy recordings to **16MB** or **64MB** without stutter.
 * **Email Attachment**: Instantly compress attachments to fit within standard **25MB** email caps.
 * **Quality Tuning**: Choose between High, Balanced, and Maximum Compression modes.
@@ -75,8 +89,9 @@ Most online converters force you to upload your personal photos and videos to re
 * **Bitrate Control**: Select 128 kbps (speech/podcasts), 192 kbps (standard music), or 320 kbps (studio fidelity).
 
 ### 📄 4. PDF Converter & Image Stitcher
-* **Images to PDF**: Combine multi-page receipts, notes, and photos into a clean, searchable PDF document.
+* **Images to PDF**: Combine multi-page receipts, notes, and photos into a clean, searchable PDF document with visual page inspection & reordering.
 * **PDF to Image Extractor**: Extract high-resolution image pages (JPEG/PNG) from PDF files for easy sharing.
+* **Watermark-Free Export (Pro)**: Keep clean page numbers (`Page 1 of X`) with app promotional branding removed.
 
 ---
 

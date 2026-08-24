@@ -577,7 +577,7 @@ fun ConfigurationScreen(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
-                                    text = "Page Number & Footer",
+                                    text = "Remove App Watermark",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
@@ -597,19 +597,23 @@ fun ConfigurationScreen(
                                 }
                             }
                             Text(
-                                text = if (request.includeBranding) "Includes 'Page X of Y • Converted with TapConvert'" else "Clean PDF export without footer",
+                                text = if (request.includeBranding) {
+                                    "Free export includes 'Page 1 of X • Converted with TapConvert'. Pro removes the watermark."
+                                } else {
+                                    "Clean export enabled — preserves page numbers ('Page 1 of X') without watermark."
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
 
                         Switch(
-                            checked = request.includeBranding,
-                            onCheckedChange = { checked ->
-                                if (!isPro && !checked) {
+                            checked = !request.includeBranding,
+                            onCheckedChange = { removeWatermark ->
+                                if (!isPro && removeWatermark) {
                                     onUpgradeProClick()
                                 } else {
-                                    onToggleIncludeBranding(checked)
+                                    onToggleIncludeBranding(!removeWatermark)
                                 }
                             }
                         )
