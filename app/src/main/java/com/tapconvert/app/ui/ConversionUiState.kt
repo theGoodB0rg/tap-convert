@@ -9,6 +9,11 @@ import com.tapconvert.core.model.ConversionStage
 sealed interface ConversionUiState {
     data object Idle : ConversionUiState
 
+    data class Staging(
+        val message: String = "Preparing selected files...",
+        val count: Int = 0
+    ) : ConversionUiState
+
     data class Configuring(
         val request: ConversionRequest,
         val sourceFileNames: List<String> = emptyList(),

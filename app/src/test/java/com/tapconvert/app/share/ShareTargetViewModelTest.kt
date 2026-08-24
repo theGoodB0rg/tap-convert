@@ -38,7 +38,8 @@ class ShareTargetViewModelTest {
         mediaEngine = DefaultMediaEngine(fakeAnalytics),
         historyRepository = historyRepo,
         adManager = adManager,
-        analyticsTracker = fakeAnalytics
+        analyticsTracker = fakeAnalytics,
+        ioDispatcher = kotlinx.coroutines.Dispatchers.Unconfined
     )
 
     @Before

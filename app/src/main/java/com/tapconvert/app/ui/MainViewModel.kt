@@ -34,6 +34,14 @@ import com.tapconvert.core.common.LifetimeStatsManager
 import com.tapconvert.core.common.ReviewPromptManager
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
 import com.tapconvert.feature.pdf.engine.PdfEngine
+import android.content.Context
+import android.net.Uri
+import com.tapconvert.core.common.intake.DefaultMediaIntakeManager
+import com.tapconvert.core.common.intake.IntakeResult
+import com.tapconvert.core.common.intake.MediaIntakeManager
+import com.tapconvert.core.model.MediaCategory
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +62,9 @@ class MainViewModel(
     private val reviewPromptManager: ReviewPromptManager = InMemoryReviewPromptManager(),
     private val reviewLauncher: InAppReviewLauncher = FakeInAppReviewLauncher(),
     private val lifetimeStatsManager: LifetimeStatsManager = InMemoryLifetimeStatsManager(),
-    private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
+    private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker(),
+    private val mediaIntakeManager: MediaIntakeManager = DefaultMediaIntakeManager(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
     val lifetimeReclaimedBytes: Flow<Long> = lifetimeStatsManager.lifetimeReclaimedBytes
@@ -76,6 +86,91 @@ class MainViewModel(
     private var pendingIntakeUris: List<String> = emptyList()
 
     private var activeJob: Job? = null
+
+    fun processIntakeUris(
+        context: Context,
+        rawUris: List<Uri>,
+        stagingDirectory: File,
+        preset: Preset? = null,
+        category: MediaCategory? = null,
+        specificType: ConversionType? = null
+    ) {
+        if (rawUris.isEmpty()) return
+
+        _uiState.value = ConversionUiState.Staging("Preparing selected files...", rawUris.size)
+
+        viewModelScope.launch(ioDispatcher) {
+            when (val intakeResult = mediaIntakeManager.stageUris(context, rawUris, stagingDirectory)) {
+                is IntakeResult.Success -> {
+                    val workingUris = intakeResult.items.map { it.uri }
+                    val current = _uiState.value
+                    if (current is ConversionUiState.Configuring) {
+                        addSourceUris(workingUris)
+                        return@launch
+                    }
+
+                    if (preset != null) {
+                        checkAndExecuteIntake(workingUris, preset.conversionType) { allowed ->
+                            selectPreset(preset, allowed)
+                        }
+                    } else if (specificType != null) {
+                        when (specificType) {
+                            ConversionType.PDF_COMPRESS -> {
+                                checkAndExecuteIntake(workingUris, ConversionType.PDF_COMPRESS) { allowed ->
+                                    configureCustom(allowed, ConversionType.PDF_COMPRESS, MimeType.Document.PDF)
+                                }
+                            }
+                            ConversionType.PDF_TO_IMAGES -> {
+                                checkAndExecuteIntake(workingUris, ConversionType.PDF_TO_IMAGES) { allowed ->
+                                    configureCustom(allowed, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
+                                }
+                            }
+                            else -> {
+                                checkAndExecuteIntake(workingUris, specificType) { allowed ->
+                                    configureCustom(allowed, specificType, MimeType.Document.PDF)
+                                }
+                            }
+                        }
+                    } else if (category != null) {
+                        when (category) {
+                            MediaCategory.IMAGE -> {
+                                checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
+                                    configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                                }
+                            }
+                            MediaCategory.VIDEO -> {
+                                checkAndExecuteIntake(workingUris, ConversionType.VIDEO_COMPRESS) { allowed ->
+                                    configureCustom(allowed, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
+                                }
+                            }
+                            MediaCategory.DOCUMENT -> {
+                                checkAndExecuteIntake(workingUris, ConversionType.IMAGES_TO_PDF) { allowed ->
+                                    configureCustom(allowed, ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
+                                }
+                            }
+                            MediaCategory.AUDIO -> {
+                                checkAndExecuteIntake(workingUris, ConversionType.EXTRACT_AUDIO) { allowed ->
+                                    configureCustom(allowed, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
+                                }
+                            }
+                        }
+                    } else {
+                        checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
+                            configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                        }
+                    }
+                }
+                is IntakeResult.Empty -> {
+                    if (_uiState.value is ConversionUiState.Staging) {
+                        _uiState.value = ConversionUiState.Idle
+                    }
+                }
+                is IntakeResult.Error -> {
+                    _uiState.value = ConversionUiState.Error(ConversionError.IOError(intakeResult.message, intakeResult.cause))
+                }
+            }
+        }
+    }
 
     fun checkAndExecuteIntake(
         sourceUris: List<String>,

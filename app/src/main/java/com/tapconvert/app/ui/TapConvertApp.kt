@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.tapconvert.app.TapConvertApplication
 import com.tapconvert.app.share.ShareHelper
 import com.tapconvert.app.share.ShareIntentParser
 import com.tapconvert.app.ui.components.TierLimitExceededDialog
@@ -80,7 +81,10 @@ fun TapConvertApp() {
     val isExpandedScreen = configuration.screenWidthDp >= 600
 
     // Initialize Room SQLite Database & Repository
-    val repository = remember { RoomConversionHistoryRepository.create(context) }
+    val repository = remember {
+        (context.applicationContext as? TapConvertApplication)?.historyRepository
+            ?: RoomConversionHistoryRepository.create(context)
+    }
     val diskCleaner = remember {
         LruDiskCleaner(
             cacheDirectories = listOf(context.cacheDir, File(context.filesDir, "conversions")),
@@ -153,8 +157,8 @@ fun TapConvertApp() {
         currentTab = NavigationTab.DASHBOARD
     }
 
-    // 3. Configuration, Success, or Error states -> Reset to Idle
-    BackHandler(enabled = uiState is ConversionUiState.Configuring || uiState is ConversionUiState.Success || uiState is ConversionUiState.Error) {
+    // 3. Configuration, Success, Error, or Staging states -> Reset to Idle
+    BackHandler(enabled = uiState is ConversionUiState.Configuring || uiState is ConversionUiState.Success || uiState is ConversionUiState.Error || uiState is ConversionUiState.Staging) {
         mainViewModel.resetToIdle()
     }
 
@@ -168,40 +172,11 @@ fun TapConvertApp() {
         showExitDialog = true
     }
 
-    // Helper to stage real picked media into working files
-    fun processPickedUris(uris: List<Uri>) {
+    val stagingDir = remember { File(context.cacheDir, "intake_staging").apply { mkdirs() } }
+
+    // Helper to trigger asynchronous background media intake
+    fun triggerIntake(uris: List<Uri>) {
         if (uris.isEmpty()) return
-
-        val stagingDir = File(context.cacheDir, "intake_staging").apply { mkdirs() }
-        val workingUris = mutableListOf<String>()
-        val fileNames = mutableListOf<String>()
-
-        for (uri in uris) {
-            val name = ShareIntentParser.resolveFileName(uri, context.contentResolver)
-            val dest = File(stagingDir, "${System.currentTimeMillis()}_$name")
-            try {
-                if (uri.scheme == "content") {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        dest.outputStream().use { output -> input.copyTo(output) }
-                    }
-                } else {
-                    val src = File(uri.path ?: uri.toString())
-                    if (src.exists()) src.copyTo(dest, overwrite = true)
-                }
-                if (dest.exists()) {
-                    workingUris.add("file://${dest.absolutePath}")
-                    fileNames.add(name)
-                }
-            } catch (_: Throwable) {}
-        }
-
-        if (workingUris.isEmpty()) return
-
-        if (uiState is ConversionUiState.Configuring) {
-            mainViewModel.addSourceUris(workingUris)
-            return
-        }
-
         val preset = pendingPreset
         val category = pendingCategory
         val specificType = pendingConversionType
@@ -209,95 +184,28 @@ fun TapConvertApp() {
         pendingCategory = null
         pendingConversionType = null
 
-        if (preset != null) {
-            mainViewModel.checkAndExecuteIntake(workingUris, preset.conversionType) { allowed ->
-                mainViewModel.selectPreset(preset, allowed)
-            }
-        } else if (specificType != null) {
-            when (specificType) {
-                ConversionType.PDF_COMPRESS -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.PDF_COMPRESS) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.PDF_COMPRESS, MimeType.Document.PDF)
-                    }
-                }
-                ConversionType.PDF_TO_IMAGES -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.PDF_TO_IMAGES) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
-                    }
-                }
-                else -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, specificType) { allowed ->
-                        mainViewModel.configureCustom(allowed, specificType, MimeType.Document.PDF)
-                    }
-                }
-            }
-        } else if (category != null) {
-            when (category) {
-                MediaCategory.IMAGE -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
-                    }
-                }
-                MediaCategory.VIDEO -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.VIDEO_COMPRESS) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
-                    }
-                }
-                MediaCategory.DOCUMENT -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGES_TO_PDF) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
-                    }
-                }
-                MediaCategory.AUDIO -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.EXTRACT_AUDIO) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
-                    }
-                }
-            }
-        } else {
-            val first = fileNames.firstOrNull()?.lowercase() ?: ""
-            when {
-                first.endsWith(".png") || first.endsWith(".jpg") || first.endsWith(".jpeg") || first.endsWith(".webp") || first.endsWith(".heic") -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
-                    }
-                }
-                first.endsWith(".mp4") || first.endsWith(".mkv") || first.endsWith(".mov") || first.endsWith(".webm") -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.VIDEO_COMPRESS) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
-                    }
-                }
-                first.endsWith(".pdf") -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.PDF_TO_IMAGES) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
-                    }
-                }
-                first.endsWith(".mp3") || first.endsWith(".m4a") || first.endsWith(".aac") || first.endsWith(".wav") -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.EXTRACT_AUDIO) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
-                    }
-                }
-                else -> {
-                    mainViewModel.checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
-                        mainViewModel.configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
-                    }
-                }
-            }
-        }
+        mainViewModel.processIntakeUris(
+            context = context,
+            rawUris = uris,
+            stagingDirectory = stagingDir,
+            preset = preset,
+            category = category,
+            specificType = specificType
+        )
     }
 
     // Modern Android Photo & Video Picker (Multi-select)
     val visualMediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
-        processPickedUris(uris)
+        triggerIntake(uris)
     }
 
     // Storage Access Framework (SAF) Document / Audio Picker
     val documentPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
-        processPickedUris(uris)
+        triggerIntake(uris)
     }
 
     // Storage Access Framework (SAF) Custom Save Folder Picker
@@ -322,7 +230,7 @@ fun TapConvertApp() {
     LaunchedEffect(initialIntakeUris) {
         if (!initialIntakeUris.isNullOrEmpty()) {
             val uris = initialIntakeUris.map { Uri.parse(it) }
-            processPickedUris(uris)
+            triggerIntake(uris)
             (context as? Activity)?.intent?.removeExtra("EXTRA_INTAKE_URIS")
         }
     }
@@ -733,6 +641,31 @@ fun TapConvertApp() {
                                             )
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        is ConversionUiState.Staging -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier.padding(32.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(48.dp),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        strokeWidth = 4.dp
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    Text(
+                                        text = state.message,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }

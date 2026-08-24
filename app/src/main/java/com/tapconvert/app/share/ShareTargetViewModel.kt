@@ -28,6 +28,8 @@ import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import com.tapconvert.feature.media.engine.MediaEngine
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
 import com.tapconvert.feature.pdf.engine.PdfEngine
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +44,8 @@ class ShareTargetViewModel(
     private val mediaEngine: MediaEngine = DefaultMediaEngine(),
     private val historyRepository: ConversionHistoryRepository = InMemoryConversionHistoryRepository(),
     val adManager: AdManager = DefaultAdManager(),
-    private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
+    private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker(),
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow<ShareTargetUiState>(ShareTargetUiState.Loading)
@@ -53,8 +56,11 @@ class ShareTargetViewModel(
 
     fun loadFromIntent(intent: Intent?, contentResolver: ContentResolver?, cacheDir: File) {
         stagingDirectory = cacheDir
-        val payload = ShareIntentParser.parse(intent, contentResolver, cacheDir)
-        loadFromPayload(payload)
+        _uiState.value = ShareTargetUiState.Loading
+        viewModelScope.launch(ioDispatcher) {
+            val payload = ShareIntentParser.parseAsync(intent, contentResolver, cacheDir, ioDispatcher)
+            loadFromPayload(payload)
+        }
     }
 
     fun loadFromPayload(payload: SharePayload?) {

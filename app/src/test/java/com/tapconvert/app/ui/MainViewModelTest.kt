@@ -1,9 +1,15 @@
 package com.tapconvert.app.ui
 
+import android.content.Context
+import android.content.ContextWrapper
+import android.net.Uri
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.tapconvert.core.ads.AdReward
 import com.tapconvert.core.ads.DefaultAdManager
+import com.tapconvert.core.common.intake.IntakeResult
+import com.tapconvert.core.common.intake.MediaIntakeManager
+import com.tapconvert.core.common.intake.StagedMediaItem
 import com.tapconvert.core.database.repository.InMemoryConversionHistoryRepository
 import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.DimensionConstraint
@@ -13,11 +19,13 @@ import com.tapconvert.core.testing.FakeAnalyticsTracker
 import com.tapconvert.feature.image.engine.DefaultImageEngine
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 
 class MainViewModelTest {
 
@@ -300,6 +308,90 @@ class MainViewModelTest {
         statsManager.recordConversion(10_000_000L, 4_000_000L)
         assertThat(vm.lifetimeReclaimedBytes.first()).isEqualTo(11_000_000L)
         assertThat(vm.lifetimeConversionsCount.first()).isEqualTo(4)
+    }
+
+    @Test
+    fun `processIntakeUris with empty URIs does not change Idle state`() {
+        viewModel.processIntakeUris(
+            context = object : ContextWrapper(null) {},
+            rawUris = emptyList(),
+            stagingDirectory = tempFolder.root
+        )
+        assertThat(viewModel.uiState.value).isEqualTo(ConversionUiState.Idle)
+    }
+
+    @Test
+    fun `processIntakeUris with success transitions to Configuring state`() = runTest {
+        val fakeIntake = object : MediaIntakeManager {
+            override suspend fun stageUris(
+                context: Context,
+                uris: List<Uri>,
+                stagingDirectory: File
+            ): IntakeResult {
+                return IntakeResult.Success(
+                    items = listOf(
+                        StagedMediaItem(
+                            uri = "file:///staged/image1.jpg",
+                            originalName = "image1.jpg",
+                            mimeType = "image/jpeg",
+                            sizeBytes = 2048L
+                        )
+                    ),
+                    totalSizeBytes = 2048L
+                )
+            }
+        }
+
+        val vm = MainViewModel(
+            historyRepository = historyRepo,
+            adManager = adManager,
+            analyticsTracker = fakeAnalytics,
+            mediaIntakeManager = fakeIntake,
+            ioDispatcher = Dispatchers.Unconfined
+        )
+
+        vm.processIntakeUris(
+            context = object : ContextWrapper(null) {},
+            rawUris = listOf(Uri.EMPTY),
+            stagingDirectory = tempFolder.root,
+            preset = Preset.GovPassport200KB
+        )
+
+        val state = vm.uiState.value
+        assertThat(state).isInstanceOf(ConversionUiState.Configuring::class.java)
+        val config = state as ConversionUiState.Configuring
+        assertThat(config.request.preset).isEqualTo(Preset.GovPassport200KB)
+        assertThat(config.request.sourceUris).containsExactly("file:///staged/image1.jpg")
+    }
+
+    @Test
+    fun `processIntakeUris with IntakeResult Error sets Error state`() = runTest {
+        val fakeIntake = object : MediaIntakeManager {
+            override suspend fun stageUris(
+                context: Context,
+                uris: List<Uri>,
+                stagingDirectory: File
+            ): IntakeResult {
+                return IntakeResult.Error("Disk full error")
+            }
+        }
+
+        val vm = MainViewModel(
+            historyRepository = historyRepo,
+            adManager = adManager,
+            analyticsTracker = fakeAnalytics,
+            mediaIntakeManager = fakeIntake,
+            ioDispatcher = Dispatchers.Unconfined
+        )
+
+        vm.processIntakeUris(
+            context = object : ContextWrapper(null) {},
+            rawUris = listOf(Uri.EMPTY),
+            stagingDirectory = tempFolder.root
+        )
+
+        val state = vm.uiState.value
+        assertThat(state).isInstanceOf(ConversionUiState.Error::class.java)
     }
 }
 

@@ -5,11 +5,27 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.tapconvert.core.model.MediaCategory
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 
 object ShareIntentParser {
+
+    private const val BUFFER_SIZE = 64 * 1024
+
+    suspend fun parseAsync(
+        intent: Intent?,
+        contentResolver: ContentResolver?,
+        cacheDirectory: File,
+        ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    ): SharePayload? = withContext(ioDispatcher) {
+        parse(intent, contentResolver, cacheDirectory)
+    }
 
     /**
      * Parses an incoming ACTION_SEND or ACTION_SEND_MULTIPLE intent into a normalized SharePayload.
@@ -220,8 +236,10 @@ object ShareIntentParser {
         return try {
             if (contentResolver != null) {
                 contentResolver.openInputStream(uri)?.use { inStream ->
-                    FileOutputStream(destinationFile).use { outStream ->
-                        inStream.copyTo(outStream)
+                    BufferedInputStream(inStream, BUFFER_SIZE).use { bufIn ->
+                        BufferedOutputStream(FileOutputStream(destinationFile), BUFFER_SIZE).use { bufOut ->
+                            bufIn.copyTo(bufOut, BUFFER_SIZE)
+                        }
                     }
                 }
                 destinationFile
