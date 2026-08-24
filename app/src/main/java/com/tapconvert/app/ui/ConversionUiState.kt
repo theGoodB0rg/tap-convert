@@ -6,12 +6,15 @@ import com.tapconvert.core.model.ConversionRequest
 import com.tapconvert.core.model.ConversionResult
 import com.tapconvert.core.model.ConversionStage
 
+import com.tapconvert.core.model.MediaCategory
+
 sealed interface ConversionUiState {
     data object Idle : ConversionUiState
 
     data class Staging(
-        val message: String = "Preparing selected files...",
-        val count: Int = 0
+        val message: String = "Getting your file ready...",
+        val fileCount: Int = 1,
+        val category: MediaCategory? = null
     ) : ConversionUiState
 
     data class Configuring(

@@ -97,7 +97,12 @@ class MainViewModel(
     ) {
         if (rawUris.isEmpty()) return
 
-        _uiState.value = ConversionUiState.Staging("Preparing selected files...", rawUris.size)
+        val resolvedCategory = category ?: preset?.category
+        _uiState.value = ConversionUiState.Staging(
+            message = com.tapconvert.core.common.status.ProcessingStatusResolver.resolveIntakeTitle(rawUris.size),
+            fileCount = rawUris.size,
+            category = resolvedCategory
+        )
 
         viewModelScope.launch(ioDispatcher) {
             when (val intakeResult = mediaIntakeManager.stageUris(context, rawUris, stagingDirectory)) {

@@ -646,28 +646,11 @@ fun TapConvertApp() {
                         }
 
                         is ConversionUiState.Staging -> {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Center,
-                                    modifier = Modifier.padding(32.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(48.dp),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        strokeWidth = 4.dp
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = state.message,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
+                            com.tapconvert.app.ui.staging.StagingScreen(
+                                fileCount = state.fileCount,
+                                category = state.category,
+                                customMessage = state.message
+                            )
                         }
 
                         is ConversionUiState.Configuring -> {
