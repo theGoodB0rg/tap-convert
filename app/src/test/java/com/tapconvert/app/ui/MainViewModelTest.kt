@@ -393,6 +393,138 @@ class MainViewModelTest {
         val state = vm.uiState.value
         assertThat(state).isInstanceOf(ConversionUiState.Error::class.java)
     }
+
+    @Test
+    fun `processIntakeUris with universal intake video file dynamically configures VIDEO_COMPRESS`() = runTest {
+        val fakeIntake = object : MediaIntakeManager {
+            override suspend fun stageUris(
+                context: Context,
+                uris: List<Uri>,
+                stagingDirectory: File
+            ): IntakeResult {
+                return IntakeResult.Success(
+                    items = listOf(
+                        StagedMediaItem(
+                            uri = "file:///staged/1787583442306_4059ce_1000003432.mp4",
+                            originalName = "1000003432.mp4",
+                            mimeType = "video/mp4",
+                            sizeBytes = 66_000_000L
+                        )
+                    ),
+                    totalSizeBytes = 66_000_000L
+                )
+            }
+        }
+
+        val vm = MainViewModel(
+            historyRepository = historyRepo,
+            adManager = adManager,
+            analyticsTracker = fakeAnalytics,
+            mediaIntakeManager = fakeIntake,
+            ioDispatcher = Dispatchers.Unconfined
+        )
+
+        // Universal dropzone intake: preset, category, and specificType are all null
+        vm.processIntakeUris(
+            context = object : ContextWrapper(null) {},
+            rawUris = listOf(Uri.EMPTY),
+            stagingDirectory = tempFolder.root
+        )
+
+        val state = vm.uiState.value
+        assertThat(state).isInstanceOf(ConversionUiState.Configuring::class.java)
+        val config = state as ConversionUiState.Configuring
+        assertThat(config.request.conversionType).isEqualTo(com.tapconvert.core.model.ConversionType.VIDEO_COMPRESS)
+        assertThat(config.request.targetMimeType).isEqualTo(com.tapconvert.core.model.MimeType.Video.MP4)
+        assertThat(config.request.sourceUris).containsExactly("file:///staged/1787583442306_4059ce_1000003432.mp4")
+    }
+
+    @Test
+    fun `processIntakeUris with universal intake PDF document dynamically configures PDF_COMPRESS`() = runTest {
+        val fakeIntake = object : MediaIntakeManager {
+            override suspend fun stageUris(
+                context: Context,
+                uris: List<Uri>,
+                stagingDirectory: File
+            ): IntakeResult {
+                return IntakeResult.Success(
+                    items = listOf(
+                        StagedMediaItem(
+                            uri = "file:///staged/report.pdf",
+                            originalName = "report.pdf",
+                            mimeType = "application/pdf",
+                            sizeBytes = 5_000_000L
+                        )
+                    ),
+                    totalSizeBytes = 5_000_000L
+                )
+            }
+        }
+
+        val vm = MainViewModel(
+            historyRepository = historyRepo,
+            adManager = adManager,
+            analyticsTracker = fakeAnalytics,
+            mediaIntakeManager = fakeIntake,
+            ioDispatcher = Dispatchers.Unconfined
+        )
+
+        vm.processIntakeUris(
+            context = object : ContextWrapper(null) {},
+            rawUris = listOf(Uri.EMPTY),
+            stagingDirectory = tempFolder.root
+        )
+
+        val state = vm.uiState.value
+        assertThat(state).isInstanceOf(ConversionUiState.Configuring::class.java)
+        val config = state as ConversionUiState.Configuring
+        assertThat(config.request.conversionType).isEqualTo(com.tapconvert.core.model.ConversionType.PDF_COMPRESS)
+        assertThat(config.request.targetMimeType).isEqualTo(com.tapconvert.core.model.MimeType.Document.PDF)
+    }
+
+    @Test
+    fun `processIntakeUris with universal intake audio file dynamically configures EXTRACT_AUDIO`() = runTest {
+        val fakeIntake = object : MediaIntakeManager {
+            override suspend fun stageUris(
+                context: Context,
+                uris: List<Uri>,
+                stagingDirectory: File
+            ): IntakeResult {
+                return IntakeResult.Success(
+                    items = listOf(
+                        StagedMediaItem(
+                            uri = "file:///staged/podcast.mp3",
+                            originalName = "podcast.mp3",
+                            mimeType = "audio/mpeg",
+                            sizeBytes = 12_000_000L
+                        )
+                    ),
+                    totalSizeBytes = 12_000_000L
+                )
+            }
+        }
+
+        val vm = MainViewModel(
+            historyRepository = historyRepo,
+            adManager = adManager,
+            analyticsTracker = fakeAnalytics,
+            mediaIntakeManager = fakeIntake,
+            ioDispatcher = Dispatchers.Unconfined
+        )
+
+        vm.processIntakeUris(
+            context = object : ContextWrapper(null) {},
+            rawUris = listOf(Uri.EMPTY),
+            stagingDirectory = tempFolder.root
+        )
+
+        val state = vm.uiState.value
+        assertThat(state).isInstanceOf(ConversionUiState.Configuring::class.java)
+        val config = state as ConversionUiState.Configuring
+        assertThat(config.request.conversionType).isEqualTo(com.tapconvert.core.model.ConversionType.EXTRACT_AUDIO)
+        assertThat(config.request.targetMimeType).isEqualTo(com.tapconvert.core.model.MimeType.Audio.MP3)
+    }
 }
+
 
 

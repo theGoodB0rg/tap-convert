@@ -36,8 +36,10 @@ import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
 import com.tapconvert.feature.pdf.engine.PdfEngine
 import android.content.Context
 import android.net.Uri
+import com.tapconvert.core.common.intake.DefaultMediaIntakeClassifier
 import com.tapconvert.core.common.intake.DefaultMediaIntakeManager
 import com.tapconvert.core.common.intake.IntakeResult
+import com.tapconvert.core.common.intake.MediaIntakeClassifier
 import com.tapconvert.core.common.intake.MediaIntakeManager
 import com.tapconvert.core.model.MediaCategory
 import kotlinx.coroutines.CoroutineDispatcher
@@ -64,6 +66,7 @@ class MainViewModel(
     private val lifetimeStatsManager: LifetimeStatsManager = InMemoryLifetimeStatsManager(),
     private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker(),
     private val mediaIntakeManager: MediaIntakeManager = DefaultMediaIntakeManager(),
+    private val mediaIntakeClassifier: MediaIntakeClassifier = DefaultMediaIntakeClassifier(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : ViewModel() {
 
@@ -114,54 +117,20 @@ class MainViewModel(
                         return@launch
                     }
 
+                    val routingDecision = mediaIntakeClassifier.resolve(
+                        items = intakeResult.items,
+                        explicitPreset = preset,
+                        explicitCategory = category,
+                        explicitType = specificType
+                    )
+
                     if (preset != null) {
                         checkAndExecuteIntake(workingUris, preset.conversionType) { allowed ->
                             selectPreset(preset, allowed)
                         }
-                    } else if (specificType != null) {
-                        when (specificType) {
-                            ConversionType.PDF_COMPRESS -> {
-                                checkAndExecuteIntake(workingUris, ConversionType.PDF_COMPRESS) { allowed ->
-                                    configureCustom(allowed, ConversionType.PDF_COMPRESS, MimeType.Document.PDF)
-                                }
-                            }
-                            ConversionType.PDF_TO_IMAGES -> {
-                                checkAndExecuteIntake(workingUris, ConversionType.PDF_TO_IMAGES) { allowed ->
-                                    configureCustom(allowed, ConversionType.PDF_TO_IMAGES, MimeType.Image.JPEG)
-                                }
-                            }
-                            else -> {
-                                checkAndExecuteIntake(workingUris, specificType) { allowed ->
-                                    configureCustom(allowed, specificType, MimeType.Document.PDF)
-                                }
-                            }
-                        }
-                    } else if (category != null) {
-                        when (category) {
-                            MediaCategory.IMAGE -> {
-                                checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
-                                    configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
-                                }
-                            }
-                            MediaCategory.VIDEO -> {
-                                checkAndExecuteIntake(workingUris, ConversionType.VIDEO_COMPRESS) { allowed ->
-                                    configureCustom(allowed, ConversionType.VIDEO_COMPRESS, MimeType.Video.MP4)
-                                }
-                            }
-                            MediaCategory.DOCUMENT -> {
-                                checkAndExecuteIntake(workingUris, ConversionType.IMAGES_TO_PDF) { allowed ->
-                                    configureCustom(allowed, ConversionType.IMAGES_TO_PDF, MimeType.Document.PDF)
-                                }
-                            }
-                            MediaCategory.AUDIO -> {
-                                checkAndExecuteIntake(workingUris, ConversionType.EXTRACT_AUDIO) { allowed ->
-                                    configureCustom(allowed, ConversionType.EXTRACT_AUDIO, MimeType.Audio.MP3)
-                                }
-                            }
-                        }
                     } else {
-                        checkAndExecuteIntake(workingUris, ConversionType.IMAGE_COMPRESS) { allowed ->
-                            configureCustom(allowed, ConversionType.IMAGE_COMPRESS, MimeType.Image.WEBP)
+                        checkAndExecuteIntake(workingUris, routingDecision.conversionType) { allowed ->
+                            configureCustom(allowed, routingDecision.conversionType, routingDecision.targetMimeType)
                         }
                     }
                 }
