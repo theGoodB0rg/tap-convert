@@ -14,6 +14,9 @@ class FakeAnalyticsTracker : AnalyticsTracker {
     val adImpressions = mutableListOf<AnalyticsEvent.AdImpression>()
     val rewardsGranted = mutableListOf<AnalyticsEvent.AdRewardGranted>()
     val shareActions = mutableListOf<AnalyticsEvent.ShareAction>()
+    val paywallViews = mutableListOf<AnalyticsEvent.PaywallViewed>()
+    val paywallPlansSelected = mutableListOf<AnalyticsEvent.PaywallPlanSelected>()
+    val paywallDismissals = mutableListOf<AnalyticsEvent.PaywallDismissed>()
 
     override fun trackEvent(event: AnalyticsEvent) {
         allEvents.add(event)
@@ -25,6 +28,9 @@ class FakeAnalyticsTracker : AnalyticsTracker {
             is AnalyticsEvent.AdImpression -> adImpressions.add(event)
             is AnalyticsEvent.AdRewardGranted -> rewardsGranted.add(event)
             is AnalyticsEvent.ShareAction -> shareActions.add(event)
+            is AnalyticsEvent.PaywallViewed -> paywallViews.add(event)
+            is AnalyticsEvent.PaywallPlanSelected -> paywallPlansSelected.add(event)
+            is AnalyticsEvent.PaywallDismissed -> paywallDismissals.add(event)
             is AnalyticsEvent.Custom -> Unit
         }
     }
@@ -44,6 +50,9 @@ class FakeAnalyticsTracker : AnalyticsTracker {
         adImpressions.clear()
         rewardsGranted.clear()
         shareActions.clear()
+        paywallViews.clear()
+        paywallPlansSelected.clear()
+        paywallDismissals.clear()
     }
 }
 

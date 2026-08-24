@@ -16,11 +16,11 @@ object ProFeatureProvider {
 
     fun getProFeatures(): List<ProFeatureItem> = listOf(
         ProFeatureItem(
-            title = "Unlimited batch conversions",
+            title = "100 files per batch conversion",
             icon = ProFeatureIcon.BATCH
         ),
         ProFeatureItem(
-            title = "Maximum processing speed",
+            title = "Turbo multi-core processing",
             icon = ProFeatureIcon.SPEED
         ),
         ProFeatureItem(

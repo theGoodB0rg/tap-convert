@@ -12,12 +12,19 @@ data class SubscriptionPlanUiModel(
 
 fun SubscriptionPlan.toUiModel(): SubscriptionPlanUiModel {
     return when (this) {
+        is SubscriptionPlan.Lifetime -> SubscriptionPlanUiModel(
+            plan = this,
+            title = "Lifetime",
+            priceFormatted = "$19.99",
+            badge = "BEST VALUE",
+            isBestValue = true
+        )
         is SubscriptionPlan.Annual -> SubscriptionPlanUiModel(
             plan = this,
             title = "Annual",
             priceFormatted = "$9.99 / yr",
-            badge = "BEST VALUE",
-            isBestValue = true
+            badge = "POPULAR",
+            isBestValue = false
         )
         is SubscriptionPlan.Monthly -> SubscriptionPlanUiModel(
             plan = this,

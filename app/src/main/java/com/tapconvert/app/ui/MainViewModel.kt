@@ -258,6 +258,9 @@ class MainViewModel(
         val current = _uiState.value as? ConversionUiState.Configuring ?: return
         val request = current.request
 
+        // Consume single batch pass token if one was granted
+        adManager.consumeBatchToken()
+
         _uiState.value = ConversionUiState.Processing(ConversionStage.PREPARING, 10, "Initializing conversion...")
 
         activeJob = viewModelScope.launch {
@@ -360,11 +363,12 @@ class MainViewModel(
         }
     }
 
-    fun unlockBatchMode(reward: AdReward = AdReward.BatchModeUnlock()) {
+    fun unlockBatchMode(reward: AdReward = AdReward.SingleBatchUnlock()) {
         adManager.grantReward(reward)
     }
 
-    fun purchasePro(plan: com.tapconvert.core.ads.SubscriptionPlan = com.tapconvert.core.ads.SubscriptionPlan.Annual) {
+    fun purchasePro(plan: com.tapconvert.core.ads.SubscriptionPlan = com.tapconvert.core.ads.SubscriptionPlan.Lifetime) {
         adManager.setPro(true, plan.tier)
+        analyticsTracker.logPaywallPlanSelected(plan.productId, plan.tier.name)
     }
 }

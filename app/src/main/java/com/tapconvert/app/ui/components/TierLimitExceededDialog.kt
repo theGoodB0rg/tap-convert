@@ -22,7 +22,7 @@ fun TierLimitExceededDialog(
     onUpgradePro: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val title = if (limitInfo.isPdf) "Photos to PDF Limit Reached" else "Batch Limit Reached"
+    val title = if (limitInfo.isPdf) "Photos to PDF Limit" else "Batch Limit Reached"
     val unitName = if (limitInfo.isPdf) "photos" else "files"
 
     AlertDialog(
@@ -43,15 +43,27 @@ fun TierLimitExceededDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "You selected ${limitInfo.requestedCount} $unitName. Your current plan converts up to ${limitInfo.allowedCount} $unitName at once.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Choose an option below to continue:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                if (limitInfo.canUnlockWithReward) {
+                    Text(
+                        text = "You selected ${limitInfo.requestedCount} $unitName. The standard free tier converts up to ${limitInfo.freeLimit} $unitName at once.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Watch a short video ad to unlock and convert all ${limitInfo.requestedCount} $unitName in this batch, or upgrade to Pro for unlimited batching.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Text(
+                        text = "You selected ${limitInfo.requestedCount} $unitName. Rewarded batch pass supports up to ${limitInfo.rewardedLimit} $unitName. Converting ${limitInfo.requestedCount} $unitName in one tap requires Pro.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Upgrade to Pro for up to 100 files at once with zero ads, or trim to the allowed limit.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         },
         confirmButton = {
@@ -59,46 +71,79 @@ fun TierLimitExceededDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Option 1: Trim to allowed limit
-                FilledTonalButton(
-                    onClick = { onProceedWithLimit(limitInfo.allowedCount) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Text("Convert First ${limitInfo.allowedCount} $unitName")
-                }
-
-                // Option 2: Watch Ad for 24h Power Pass (if not already active)
-                if (!limitInfo.isFastPassActive && !limitInfo.isPro) {
+                // Option 1: Watch video to unlock THIS batch (if <= rewardedLimit)
+                if (limitInfo.canUnlockWithReward) {
                     Button(
                         onClick = onUnlockFastPass,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp), tint = AccentAmber)
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = AccentAmber
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (limitInfo.isPdf) "Unlock 15 Photos (Watch Video)" else "Unlock 10 Files (Watch Video)",
+                            text = "Watch Video to Convert All ${limitInfo.requestedCount} $unitName",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else if (!limitInfo.isPro) {
+                    // Over rewarded limit: Option to watch video for max rewarded batch
+                    Button(
+                        onClick = {
+                            onUnlockFastPass()
+                            onProceedWithLimit(limitInfo.rewardedLimit)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = AccentAmber
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Unlock Max ${limitInfo.rewardedLimit} $unitName (Watch Video)",
                             fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
 
-                // Option 3: Pro Upgrade
+                // Option 2: Pro Upgrade
                 if (!limitInfo.isPro) {
                     OutlinedButton(
                         onClick = onUpgradePro,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp), tint = AccentAmber)
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = AccentAmber
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Upgrade to Pro",
+                            text = "Upgrade to Pro (Unlimited & No Ads)",
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                }
+
+                // Option 3: Convert First FreeLimit files
+                FilledTonalButton(
+                    onClick = { onProceedWithLimit(limitInfo.freeLimit) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Convert First ${limitInfo.freeLimit} $unitName (Free)")
                 }
 
                 // Option 4: Cancel

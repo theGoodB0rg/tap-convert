@@ -43,6 +43,8 @@ fun ResultScreen(
     onShareMultipleClick: (List<String>) -> Unit = { list -> list.firstOrNull()?.let { onShareClick(it) } },
     onFavoriteToggle: (String, Boolean) -> Unit,
     onDoneClick: () -> Unit,
+    isPro: Boolean = false,
+    onUpgradeProClick: () -> Unit = {},
     showReviewPrompt: Boolean = false,
     onReviewAccepted: () -> Unit = {},
     onReviewDismissed: () -> Unit = {},
@@ -124,6 +126,72 @@ fun ResultScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                }
+            }
+        }
+
+        // High-Converting Pro CRO Hook Card
+        if (!isPro) {
+            Card(
+                onClick = onUpgradeProClick,
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f),
+                        RoundedCornerShape(16.dp)
+                    )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Star,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Need 100-File Batches & Zero Ads?",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Upgrade to Pro for unlimited multi-core conversions",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+
+                    FilledTonalButton(
+                        onClick = onUpgradeProClick,
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text("Upgrade", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                     }
                 }
             }
@@ -603,6 +671,12 @@ fun ResultScreen(
                 maxLines = 1,
                 softWrap = false,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+
+        if (!isPro) {
+            com.tapconvert.app.ui.components.monetization.AdaptiveBannerAd(
+                isAdFree = isPro
             )
         }
     }

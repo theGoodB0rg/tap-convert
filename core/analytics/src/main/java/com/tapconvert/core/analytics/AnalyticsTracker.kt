@@ -44,6 +44,18 @@ interface AnalyticsTracker {
     fun logShareAction(format: String, outputSizeBytes: Long) {
         trackEvent(AnalyticsEvent.ShareAction(format, outputSizeBytes))
     }
+
+    fun logPaywallViewed(source: String) {
+        trackEvent(AnalyticsEvent.PaywallViewed(source))
+    }
+
+    fun logPaywallPlanSelected(planId: String, tier: String) {
+        trackEvent(AnalyticsEvent.PaywallPlanSelected(planId, tier))
+    }
+
+    fun logPaywallDismissed(source: String) {
+        trackEvent(AnalyticsEvent.PaywallDismissed(source))
+    }
 }
 
 class NoOpAnalyticsTracker : AnalyticsTracker {

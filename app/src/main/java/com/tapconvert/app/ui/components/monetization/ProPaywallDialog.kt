@@ -40,6 +40,7 @@ fun ProPaywallDialog(
     modifier: Modifier = Modifier
 ) {
     val features = ProFeatureProvider.getProFeatures()
+    val lifetimePlan = SubscriptionPlan.Lifetime.toUiModel()
     val annualPlan = SubscriptionPlan.Annual.toUiModel()
     val monthlyPlan = SubscriptionPlan.Monthly.toUiModel()
 
@@ -89,7 +90,7 @@ fun ProPaywallDialog(
                     )
                     if (!isPro) {
                         Text(
-                            text = "Supercharge your offline media workflow",
+                            text = "Uncapped offline batching and zero ads",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -115,6 +116,11 @@ fun ProPaywallDialog(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         SubscriptionPlanTile(
+                            model = lifetimePlan,
+                            onClick = { onPurchasePlan(SubscriptionPlan.Lifetime) }
+                        )
+
+                        SubscriptionPlanTile(
                             model = annualPlan,
                             onClick = { onPurchasePlan(SubscriptionPlan.Annual) }
                         )
@@ -123,22 +129,6 @@ fun ProPaywallDialog(
                             model = monthlyPlan,
                             onClick = { onPurchasePlan(SubscriptionPlan.Monthly) }
                         )
-                    }
-
-                    // 24h Pass Button
-                    FilledTonalButton(
-                        onClick = onUnlockRewardedPass,
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Bolt,
-                            contentDescription = null,
-                            tint = AccentAmber,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("24-Hour Pass (Watch Video)", fontWeight = FontWeight.SemiBold)
                     }
                 }
 

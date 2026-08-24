@@ -34,8 +34,8 @@ class ProFeatureProviderTest {
     @Test
     fun `feature titles match expected scannable copy`() {
         val features = ProFeatureProvider.getProFeatures()
-        assertThat(features[0].title).isEqualTo("Unlimited batch conversions")
-        assertThat(features[1].title).isEqualTo("Maximum processing speed")
+        assertThat(features[0].title).isEqualTo("100 files per batch conversion")
+        assertThat(features[1].title).isEqualTo("Turbo multi-core processing")
         assertThat(features[2].title).isEqualTo("100% ad-free experience")
         assertThat(features[3].title).isEqualTo("Watermark-free PDF exports")
     }

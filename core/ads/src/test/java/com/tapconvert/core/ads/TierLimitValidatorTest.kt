@@ -7,67 +7,74 @@ import org.junit.Test
 class TierLimitValidatorTest {
 
     @Test
-    fun `free tier allows up to 2 batch files and 5 PDF images`() {
+    fun `free tier allows up to 5 batch files and 10 PDF images`() {
         val freeState = AdState(isPro = false, isAdFree = false)
 
-        // 2 batch files allowed
-        val batch2 = TierLimitValidator.validate(2, ConversionType.IMAGE_COMPRESS, freeState)
-        assertThat(batch2).isEqualTo(TierLimitResult.Allowed)
+        // 5 batch files allowed
+        val batch5 = TierLimitValidator.validate(5, ConversionType.IMAGE_COMPRESS, freeState)
+        assertThat(batch5).isEqualTo(TierLimitResult.Allowed)
 
-        // 3 batch files exceeded
-        val batch3 = TierLimitValidator.validate(3, ConversionType.IMAGE_COMPRESS, freeState)
-        assertThat(batch3).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
-        val batch3Exceeded = batch3 as TierLimitResult.LimitExceeded
-        assertThat(batch3Exceeded.allowedCount).isEqualTo(2)
-        assertThat(batch3Exceeded.requestedCount).isEqualTo(3)
-        assertThat(batch3Exceeded.isPdf).isFalse()
-        assertThat(batch3Exceeded.isPro).isFalse()
-        assertThat(batch3Exceeded.isFastPassActive).isFalse()
+        // 6 batch files exceeded (can unlock with reward)
+        val batch6 = TierLimitValidator.validate(6, ConversionType.IMAGE_COMPRESS, freeState)
+        assertThat(batch6).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
+        val batch6Exceeded = batch6 as TierLimitResult.LimitExceeded
+        assertThat(batch6Exceeded.allowedCount).isEqualTo(5)
+        assertThat(batch6Exceeded.requestedCount).isEqualTo(6)
+        assertThat(batch6Exceeded.freeLimit).isEqualTo(5)
+        assertThat(batch6Exceeded.rewardedLimit).isEqualTo(20)
+        assertThat(batch6Exceeded.canUnlockWithReward).isTrue()
+        assertThat(batch6Exceeded.isPdf).isFalse()
+        assertThat(batch6Exceeded.isPro).isFalse()
+        assertThat(batch6Exceeded.isFastPassActive).isFalse()
 
-        // 5 PDF images allowed
-        val pdf5 = TierLimitValidator.validate(5, ConversionType.IMAGES_TO_PDF, freeState)
-        assertThat(pdf5).isEqualTo(TierLimitResult.Allowed)
+        // 10 PDF images allowed
+        val pdf10 = TierLimitValidator.validate(10, ConversionType.IMAGES_TO_PDF, freeState)
+        assertThat(pdf10).isEqualTo(TierLimitResult.Allowed)
 
-        // 6 PDF images exceeded
-        val pdf6 = TierLimitValidator.validate(6, ConversionType.IMAGES_TO_PDF, freeState)
-        assertThat(pdf6).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
-        val pdf6Exceeded = pdf6 as TierLimitResult.LimitExceeded
-        assertThat(pdf6Exceeded.allowedCount).isEqualTo(5)
-        assertThat(pdf6Exceeded.requestedCount).isEqualTo(6)
-        assertThat(pdf6Exceeded.isPdf).isTrue()
+        // 11 PDF images exceeded
+        val pdf11 = TierLimitValidator.validate(11, ConversionType.IMAGES_TO_PDF, freeState)
+        assertThat(pdf11).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
+        val pdf11Exceeded = pdf11 as TierLimitResult.LimitExceeded
+        assertThat(pdf11Exceeded.allowedCount).isEqualTo(10)
+        assertThat(pdf11Exceeded.requestedCount).isEqualTo(11)
+        assertThat(pdf11Exceeded.freeLimit).isEqualTo(10)
+        assertThat(pdf11Exceeded.rewardedLimit).isEqualTo(25)
+        assertThat(pdf11Exceeded.canUnlockWithReward).isTrue()
+        assertThat(pdf11Exceeded.isPdf).isTrue()
     }
 
     @Test
-    fun `fast pass allows up to 10 batch files and 15 PDF images`() {
-        val now = 1_000_000L
-        val fastPassState = AdState(
+    fun `rewarded single-batch pass allows up to 20 batch files and 25 PDF images`() {
+        val singleBatchUnlockedState = AdState(
             isPro = false,
             isAdFree = false,
-            batchModeExpiryTime = now + 86_400_000L
+            unlockedBatchTokens = 1
         )
 
-        // 10 batch files allowed
-        val batch10 = TierLimitValidator.validate(10, ConversionType.VIDEO_COMPRESS, fastPassState, now)
-        assertThat(batch10).isEqualTo(TierLimitResult.Allowed)
+        // 20 batch files allowed
+        val batch20 = TierLimitValidator.validate(20, ConversionType.VIDEO_COMPRESS, singleBatchUnlockedState)
+        assertThat(batch20).isEqualTo(TierLimitResult.Allowed)
 
-        // 11 batch files exceeded
-        val batch11 = TierLimitValidator.validate(11, ConversionType.VIDEO_COMPRESS, fastPassState, now)
-        assertThat(batch11).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
-        val batch11Exceeded = batch11 as TierLimitResult.LimitExceeded
-        assertThat(batch11Exceeded.allowedCount).isEqualTo(10)
-        assertThat(batch11Exceeded.requestedCount).isEqualTo(11)
-        assertThat(batch11Exceeded.isFastPassActive).isTrue()
+        // 21 batch files exceeded (cannot unlock with simple video, requires Pro)
+        val batch21 = TierLimitValidator.validate(21, ConversionType.VIDEO_COMPRESS, singleBatchUnlockedState)
+        assertThat(batch21).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
+        val batch21Exceeded = batch21 as TierLimitResult.LimitExceeded
+        assertThat(batch21Exceeded.allowedCount).isEqualTo(20)
+        assertThat(batch21Exceeded.requestedCount).isEqualTo(21)
+        assertThat(batch21Exceeded.isFastPassActive).isTrue()
+        assertThat(batch21Exceeded.canUnlockWithReward).isFalse()
 
-        // 15 PDF images allowed
-        val pdf15 = TierLimitValidator.validate(15, ConversionType.IMAGES_TO_PDF, fastPassState, now)
-        assertThat(pdf15).isEqualTo(TierLimitResult.Allowed)
+        // 25 PDF images allowed
+        val pdf25 = TierLimitValidator.validate(25, ConversionType.IMAGES_TO_PDF, singleBatchUnlockedState)
+        assertThat(pdf25).isEqualTo(TierLimitResult.Allowed)
 
-        // 16 PDF images exceeded
-        val pdf16 = TierLimitValidator.validate(16, ConversionType.IMAGES_TO_PDF, fastPassState, now)
-        assertThat(pdf16).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
-        val pdf16Exceeded = pdf16 as TierLimitResult.LimitExceeded
-        assertThat(pdf16Exceeded.allowedCount).isEqualTo(15)
-        assertThat(pdf16Exceeded.requestedCount).isEqualTo(16)
+        // 26 PDF images exceeded
+        val pdf26 = TierLimitValidator.validate(26, ConversionType.IMAGES_TO_PDF, singleBatchUnlockedState)
+        assertThat(pdf26).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
+        val pdf26Exceeded = pdf26 as TierLimitResult.LimitExceeded
+        assertThat(pdf26Exceeded.allowedCount).isEqualTo(25)
+        assertThat(pdf26Exceeded.requestedCount).isEqualTo(26)
+        assertThat(pdf26Exceeded.canUnlockWithReward).isFalse()
     }
 
     @Test
@@ -92,18 +99,18 @@ class TierLimitValidatorTest {
     }
 
     @Test
-    fun `expired fast pass reverts to free tier limits`() {
-        val now = 2_000_000L
-        val expiredFastPassState = AdState(
+    fun `exhausted tokens revert to free tier limits`() {
+        val noTokensState = AdState(
             isPro = false,
             isAdFree = false,
-            batchModeExpiryTime = now - 1000L // In the past
+            unlockedBatchTokens = 0
         )
 
-        // 3 batch files should exceed free limit of 2
-        val batch3 = TierLimitValidator.validate(3, ConversionType.IMAGE_COMPRESS, expiredFastPassState, now)
-        assertThat(batch3).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
-        assertThat((batch3 as TierLimitResult.LimitExceeded).allowedCount).isEqualTo(2)
-        assertThat(batch3.isFastPassActive).isFalse()
+        // 6 batch files should exceed free limit of 5
+        val batch6 = TierLimitValidator.validate(6, ConversionType.IMAGE_COMPRESS, noTokensState)
+        assertThat(batch6).isInstanceOf(TierLimitResult.LimitExceeded::class.java)
+        assertThat((batch6 as TierLimitResult.LimitExceeded).allowedCount).isEqualTo(5)
+        assertThat(batch6.isFastPassActive).isFalse()
+        assertThat(batch6.canUnlockWithReward).isTrue()
     }
 }

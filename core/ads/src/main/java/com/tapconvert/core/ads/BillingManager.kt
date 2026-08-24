@@ -6,7 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 enum class SubscriptionTier {
     FREE,
     PRO_MONTHLY,
-    PRO_ANNUAL
+    PRO_ANNUAL,
+    PRO_LIFETIME
 }
 
 sealed class SubscriptionPlan(
@@ -24,6 +25,12 @@ sealed class SubscriptionPlan(
         productId = "tapconvert_pro_annual",
         priceFormatted = "$9.99/yr",
         tier = SubscriptionTier.PRO_ANNUAL
+    )
+
+    data object Lifetime : SubscriptionPlan(
+        productId = "tapconvert_pro_lifetime",
+        priceFormatted = "$19.99",
+        tier = SubscriptionTier.PRO_LIFETIME
     )
 }
 

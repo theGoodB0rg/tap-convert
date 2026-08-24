@@ -13,22 +13,33 @@ class FakeBillingManager(
     override val subscriptionStatus: StateFlow<SubscriptionStatus> = _subscriptionStatus.asStateFlow()
 
     override fun purchase(activity: Activity?, plan: SubscriptionPlan) {
+        val expiryMs = when (plan) {
+            is SubscriptionPlan.Lifetime -> null // Lifetime never expires
+            is SubscriptionPlan.Annual -> System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000L)
+            is SubscriptionPlan.Monthly -> System.currentTimeMillis() + (30L * 24 * 60 * 60 * 1000L)
+        }
         _subscriptionStatus.value = SubscriptionStatus(
             isPro = true,
             tier = plan.tier,
-            expiryTimestampMs = System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000L)
+            expiryTimestampMs = expiryMs
         )
     }
 
     override fun restorePurchases() {
-        // In fake implementation, no-op or maintains current state
+        // In fake implementation, maintains current state
     }
 
     fun setPro(isPro: Boolean, tier: SubscriptionTier = if (isPro) SubscriptionTier.PRO_ANNUAL else SubscriptionTier.FREE) {
+        val expiryMs = when {
+            !isPro -> null
+            tier == SubscriptionTier.PRO_LIFETIME -> null
+            tier == SubscriptionTier.PRO_ANNUAL -> System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000L)
+            else -> System.currentTimeMillis() + (30L * 24 * 60 * 60 * 1000L)
+        }
         _subscriptionStatus.value = SubscriptionStatus(
             isPro = isPro,
             tier = tier,
-            expiryTimestampMs = if (isPro) System.currentTimeMillis() + (365L * 24 * 60 * 60 * 1000L) else null
+            expiryTimestampMs = expiryMs
         )
     }
 }

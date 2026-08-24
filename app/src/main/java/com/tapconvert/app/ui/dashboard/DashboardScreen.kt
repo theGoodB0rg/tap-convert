@@ -34,6 +34,7 @@ fun DashboardScreen(
     totalStorageBytes: Long = 0L,
     lifetimeReclaimedBytes: Long = 0L,
     lifetimeConversionsCount: Int = 0,
+    isPro: Boolean = false,
     onCategoryClick: (MediaCategory) -> Unit,
     onPresetClick: (Preset) -> Unit,
     onUniversalIntakeClick: () -> Unit = { onCategoryClick(MediaCategory.IMAGE) },
@@ -328,7 +329,7 @@ fun DashboardScreen(
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "Get a 24h Power Pass with a quick video, or upgrade to Pro",
+                        text = "Unlock larger batches with a quick video, or upgrade to Pro",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -341,9 +342,15 @@ fun DashboardScreen(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    Text("Power Up", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
+                    Text("Upgrade", style = MaterialTheme.typography.labelMedium, maxLines = 1, softWrap = false)
                 }
             }
+        }
+
+        if (!isPro) {
+            com.tapconvert.app.ui.components.monetization.AdaptiveBannerAd(
+                isAdFree = isPro
+            )
         }
     }
 }

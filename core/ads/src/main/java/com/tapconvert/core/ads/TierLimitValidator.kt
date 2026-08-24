@@ -7,9 +7,12 @@ sealed interface TierLimitResult {
     data class LimitExceeded(
         val requestedCount: Int,
         val allowedCount: Int,
+        val freeLimit: Int,
+        val rewardedLimit: Int,
         val isPdf: Boolean,
         val isPro: Boolean,
-        val isFastPassActive: Boolean
+        val isFastPassActive: Boolean,
+        val canUnlockWithReward: Boolean = !isPro && requestedCount <= rewardedLimit
     ) : TierLimitResult
 }
 
@@ -22,6 +25,8 @@ object TierLimitValidator {
         currentTimeMs: Long = System.currentTimeMillis()
     ): TierLimitResult {
         val isPdf = conversionType == ConversionType.IMAGES_TO_PDF
+        val freeLimit = if (isPdf) AdState.FREE_MAX_PDF_IMAGES else AdState.FREE_MAX_BATCH_FILES
+        val rewardedLimit = if (isPdf) AdState.REWARDED_MAX_PDF_IMAGES else AdState.REWARDED_MAX_BATCH_FILES
         val maxAllowed = if (isPdf) {
             adState.maxPdfImagesAllowed(currentTimeMs)
         } else {
@@ -34,9 +39,12 @@ object TierLimitValidator {
             TierLimitResult.LimitExceeded(
                 requestedCount = fileCount,
                 allowedCount = maxAllowed,
+                freeLimit = freeLimit,
+                rewardedLimit = rewardedLimit,
                 isPdf = isPdf,
                 isPro = adState.isPro,
-                isFastPassActive = adState.isBatchModeUnlocked(currentTimeMs)
+                isFastPassActive = adState.hasBatchTaskPrivilege(currentTimeMs),
+                canUnlockWithReward = !adState.isPro && fileCount <= rewardedLimit
             )
         }
     }

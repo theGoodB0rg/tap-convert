@@ -7,13 +7,23 @@ import org.junit.Test
 class SubscriptionPlanUiModelTest {
 
     @Test
-    fun `annual plan maps to correct title, price, and best value badge`() {
+    fun `lifetime plan maps to correct title, price, and best value badge`() {
+        val uiModel = SubscriptionPlan.Lifetime.toUiModel()
+
+        assertThat(uiModel.title).isEqualTo("Lifetime")
+        assertThat(uiModel.priceFormatted).isEqualTo("$19.99")
+        assertThat(uiModel.badge).isEqualTo("BEST VALUE")
+        assertThat(uiModel.isBestValue).isTrue()
+    }
+
+    @Test
+    fun `annual plan maps to correct title, price, and popular badge`() {
         val uiModel = SubscriptionPlan.Annual.toUiModel()
 
         assertThat(uiModel.title).isEqualTo("Annual")
         assertThat(uiModel.priceFormatted).isEqualTo("$9.99 / yr")
-        assertThat(uiModel.badge).isEqualTo("BEST VALUE")
-        assertThat(uiModel.isBestValue).isTrue()
+        assertThat(uiModel.badge).isEqualTo("POPULAR")
+        assertThat(uiModel.isBestValue).isFalse()
     }
 
     @Test
@@ -28,7 +38,11 @@ class SubscriptionPlanUiModelTest {
 
     @Test
     fun `all subscription plan UI models contain strictly zero emoji characters`() {
-        val plans = listOf(SubscriptionPlan.Annual.toUiModel(), SubscriptionPlan.Monthly.toUiModel())
+        val plans = listOf(
+            SubscriptionPlan.Lifetime.toUiModel(),
+            SubscriptionPlan.Annual.toUiModel(),
+            SubscriptionPlan.Monthly.toUiModel()
+        )
         val emojiRegex = Regex("[\\p{So}\\p{Cn}\\uD83C-\\uDBFF\\uDC00-\\uDFFF]")
 
         for (plan in plans) {

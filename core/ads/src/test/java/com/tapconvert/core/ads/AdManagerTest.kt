@@ -45,21 +45,32 @@ class AdManagerTest {
     }
 
     @Test
-    fun `rewarded grant unlocks feature privileges with expiration timestamp`() {
+    fun `rewarded single batch grant unlocks batch privileges and consumption decrements token`() {
         val now = 100_000L
-        assertThat(adManager.state.value.isBatchModeUnlocked(now)).isFalse()
-        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(2)
-        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(5)
+        assertThat(adManager.state.value.hasBatchTaskPrivilege(now)).isFalse()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(5)
+        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(10)
+        assertThat(adManager.state.value.unlockedBatchTokens).isEqualTo(0)
 
-        val reward = AdReward.BatchModeUnlock(durationMs = 30 * 60 * 1000L)
+        val reward = AdReward.SingleBatchUnlock(maxBatchFiles = 20, maxPdfImages = 25)
         adManager.grantReward(reward, currentTimeMs = now)
 
-        assertThat(adManager.state.value.isBatchModeUnlocked(now)).isTrue()
-        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(10)
-        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(15)
+        assertThat(adManager.state.value.unlockedBatchTokens).isEqualTo(1)
+        assertThat(adManager.state.value.hasBatchTaskPrivilege(now)).isTrue()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(20)
+        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(25)
 
-        assertThat(adManager.state.value.isBatchModeUnlocked(now + 31 * 60 * 1000L)).isFalse()
-        assertThat(adManager.state.value.maxBatchFilesAllowed(now + 31 * 60 * 1000L)).isEqualTo(2)
+        // Consuming token decrements token count back to 0
+        val consumed = adManager.consumeBatchToken()
+        assertThat(consumed).isTrue()
+        assertThat(adManager.state.value.unlockedBatchTokens).isEqualTo(0)
+        assertThat(adManager.state.value.hasBatchTaskPrivilege(now)).isFalse()
+        assertThat(adManager.state.value.maxBatchFilesAllowed(now)).isEqualTo(5)
+        assertThat(adManager.state.value.maxPdfImagesAllowed(now)).isEqualTo(10)
+
+        // Consuming again returns false
+        val consumedAgain = adManager.consumeBatchToken()
+        assertThat(consumedAgain).isFalse()
 
         assertThat(fakeAnalytics.rewardsGranted).hasSize(1)
     }
@@ -81,10 +92,10 @@ class AdManagerTest {
         adManager.recordConversion()
         adManager.recordConversion()
 
-        adManager.setPro(true, SubscriptionTier.PRO_ANNUAL)
+        adManager.setPro(true, SubscriptionTier.PRO_LIFETIME)
 
         assertThat(adManager.state.value.isPro).isTrue()
-        assertThat(adManager.state.value.subscriptionTier).isEqualTo(SubscriptionTier.PRO_ANNUAL)
+        assertThat(adManager.state.value.subscriptionTier).isEqualTo(SubscriptionTier.PRO_LIFETIME)
         assertThat(adManager.shouldShowInterstitial(now)).isFalse()
         assertThat(adManager.state.value.isBatchModeUnlocked(now)).isTrue()
         assertThat(adManager.state.value.isUltraFastUnlocked(now)).isTrue()
@@ -93,13 +104,19 @@ class AdManagerTest {
     }
 
     @Test
-    fun `fake billing manager purchases and updates subscription status correctly`() {
+    fun `fake billing manager purchases and updates subscription status correctly for lifetime and subscriptions`() {
         val billingManager = FakeBillingManager()
         assertThat(billingManager.subscriptionStatus.value.isPro).isFalse()
+
+        billingManager.purchase(null, SubscriptionPlan.Lifetime)
+        assertThat(billingManager.subscriptionStatus.value.isPro).isTrue()
+        assertThat(billingManager.subscriptionStatus.value.tier).isEqualTo(SubscriptionTier.PRO_LIFETIME)
+        assertThat(billingManager.subscriptionStatus.value.expiryTimestampMs).isNull()
 
         billingManager.purchase(null, SubscriptionPlan.Annual)
         assertThat(billingManager.subscriptionStatus.value.isPro).isTrue()
         assertThat(billingManager.subscriptionStatus.value.tier).isEqualTo(SubscriptionTier.PRO_ANNUAL)
+        assertThat(billingManager.subscriptionStatus.value.expiryTimestampMs).isNotNull()
 
         billingManager.purchase(null, SubscriptionPlan.Monthly)
         assertThat(billingManager.subscriptionStatus.value.isPro).isTrue()

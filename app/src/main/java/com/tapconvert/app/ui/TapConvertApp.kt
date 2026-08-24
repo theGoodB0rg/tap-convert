@@ -366,9 +366,9 @@ fun TapConvertApp() {
                     mainViewModel.proceedWithClampedLimit(allowed)
                 },
                 onUnlockFastPass = {
-                    mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+                    mainViewModel.unlockBatchMode(AdReward.SingleBatchUnlock())
                     mainViewModel.retryPendingIntakeWithNewTier()
-                    Toast.makeText(context, "Fast Pass Active (24h)!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Batch Pass Unlocked!", Toast.LENGTH_SHORT).show()
                 },
                 onUpgradePro = {
                     mainViewModel.dismissTierLimit()
@@ -414,12 +414,17 @@ fun TapConvertApp() {
                 onPurchasePlan = { plan ->
                     mainViewModel.purchasePro(plan)
                     showFastPassDialog = false
-                    val planName = if (plan is com.tapconvert.core.ads.SubscriptionPlan.Annual) "Annual" else "Monthly"
+                    val planName = when (plan) {
+                        is com.tapconvert.core.ads.SubscriptionPlan.Lifetime -> "Lifetime"
+                        is com.tapconvert.core.ads.SubscriptionPlan.Annual -> "Annual"
+                        is com.tapconvert.core.ads.SubscriptionPlan.Monthly -> "Monthly"
+                    }
                     Toast.makeText(context, "Upgraded to TapConvert Pro $planName!", Toast.LENGTH_SHORT).show()
                 },
                 onUnlockRewardedPass = {
-                    mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+                    mainViewModel.unlockBatchMode(AdReward.SingleBatchUnlock())
                     showFastPassDialog = false
+                    Toast.makeText(context, "Batch Pass Unlocked!", Toast.LENGTH_SHORT).show()
                 },
                 onDismiss = { showFastPassDialog = false }
             )
@@ -515,10 +520,23 @@ fun TapConvertApp() {
                                 )
                             },
                             actions = {
-                                if (adState.isBatchModeUnlocked()) {
+                                if (adState.isPro) {
                                     AssistChip(
                                         onClick = { showFastPassDialog = true },
-                                        label = { Text("24h Pass Active") },
+                                        label = { Text("Pro Active") },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Star,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp),
+                                                tint = AccentAmber
+                                            )
+                                        }
+                                    )
+                                } else if (adState.unlockedBatchTokens > 0) {
+                                    AssistChip(
+                                        onClick = { showFastPassDialog = true },
+                                        label = { Text("Batch Pass Active (${adState.unlockedBatchTokens})") },
                                         leadingIcon = {
                                             Icon(
                                                 imageVector = Icons.Default.Bolt,
@@ -535,13 +553,13 @@ fun TapConvertApp() {
                                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Bolt,
+                                            imageVector = Icons.Default.Star,
                                             contentDescription = null,
                                             modifier = Modifier.size(16.dp),
                                             tint = AccentAmber
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Power Pass", style = MaterialTheme.typography.labelSmall)
+                                        Text("Upgrade Pro", style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
                             }
@@ -587,6 +605,7 @@ fun TapConvertApp() {
                                         totalStorageBytes = totalStorageBytes,
                                         lifetimeReclaimedBytes = lifetimeReclaimedBytes,
                                         lifetimeConversionsCount = lifetimeConversionsCount,
+                                        isPro = adState.isPro,
                                         onCategoryClick = { category ->
                                             pendingPreset = null
                                             pendingCategory = category
@@ -765,6 +784,8 @@ fun TapConvertApp() {
                                 },
                                 onFavoriteToggle = { id, fav -> mainViewModel.toggleFavorite(id, fav) },
                                 onDoneClick = { mainViewModel.resetToIdle() },
+                                isPro = adState.isPro,
+                                onUpgradeProClick = { showFastPassDialog = true },
                                 showReviewPrompt = shouldShowReviewPrompt,
                                 onReviewAccepted = { mainViewModel.onReviewAccepted(context as? Activity) },
                                 onReviewDismissed = { mainViewModel.onReviewDismissed() }

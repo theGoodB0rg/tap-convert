@@ -14,6 +14,7 @@ interface AdManager {
     fun onInterstitialShown(currentTimeMs: Long = System.currentTimeMillis())
     fun onBannerImpression()
     fun grantReward(reward: AdReward, currentTimeMs: Long = System.currentTimeMillis())
+    fun consumeBatchToken(): Boolean
     fun setAdFree(isAdFree: Boolean)
     fun setPro(isPro: Boolean, tier: SubscriptionTier = if (isPro) SubscriptionTier.PRO_ANNUAL else SubscriptionTier.FREE)
     fun resetSession()
@@ -60,6 +61,9 @@ class DefaultAdManager(
     override fun grantReward(reward: AdReward, currentTimeMs: Long) {
         _state.update { current ->
             when (reward) {
+                is AdReward.SingleBatchUnlock -> {
+                    current.copy(unlockedBatchTokens = current.unlockedBatchTokens + 1)
+                }
                 is AdReward.BatchModeUnlock -> {
                     val newExpiry = maxOf(current.batchModeExpiryTime, currentTimeMs) + reward.durationMs
                     current.copy(batchModeExpiryTime = newExpiry)
@@ -70,11 +74,28 @@ class DefaultAdManager(
                 }
             }
         }
-        val durationMin = (reward.durationMs / 60_000L).toInt()
+        val durationMin = when (reward) {
+            is AdReward.SingleBatchUnlock -> 0
+            is AdReward.BatchModeUnlock -> (reward.durationMs / 60_000L).toInt()
+            is AdReward.UltraFastUnlock -> (reward.durationMs / 60_000L).toInt()
+        }
         analyticsTracker.logAdRewardGranted(
             rewardType = reward.rewardName,
             durationMinutes = durationMin
         )
+    }
+
+    override fun consumeBatchToken(): Boolean {
+        var consumed = false
+        _state.update { current ->
+            if (current.unlockedBatchTokens > 0) {
+                consumed = true
+                current.copy(unlockedBatchTokens = current.unlockedBatchTokens - 1)
+            } else {
+                current
+            }
+        }
+        return consumed
     }
 
     override fun setAdFree(isAdFree: Boolean) {

@@ -109,6 +109,34 @@ sealed interface AnalyticsEvent {
         )
     }
 
+    data class PaywallViewed(
+        val source: String
+    ) : AnalyticsEvent {
+        override val eventName: String = "paywall_viewed"
+
+        override fun toParamsMap(): Map<String, Any> = mapOf("source" to source)
+    }
+
+    data class PaywallPlanSelected(
+        val planId: String,
+        val tier: String
+    ) : AnalyticsEvent {
+        override val eventName: String = "paywall_plan_selected"
+
+        override fun toParamsMap(): Map<String, Any> = mapOf(
+            "plan_id" to planId,
+            "tier" to tier
+        )
+    }
+
+    data class PaywallDismissed(
+        val source: String
+    ) : AnalyticsEvent {
+        override val eventName: String = "paywall_dismissed"
+
+        override fun toParamsMap(): Map<String, Any> = mapOf("source" to source)
+    }
+
     data class Custom(
         override val eventName: String,
         val params: Map<String, Any> = emptyMap()

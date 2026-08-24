@@ -179,43 +179,46 @@ class MainViewModelTest {
     @Test
     fun `checkAndExecuteIntake intercepts files exceeding free limits and allows clamping`() {
         var executedUris: List<String>? = null
-        val sixPdfUris = (1..6).map { "file:///img$it.jpg" }
+        val elevenPdfUris = (1..11).map { "file:///img$it.jpg" }
 
-        viewModel.checkAndExecuteIntake(sixPdfUris, com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF) { uris ->
+        viewModel.checkAndExecuteIntake(elevenPdfUris, com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF) { uris ->
             executedUris = uris
         }
 
-        // Free limit is 5 for PDF -> should trigger tier limit exceeded
+        // Free limit is 10 for PDF -> should trigger tier limit exceeded
         assertThat(executedUris).isNull()
         val limitExceeded = viewModel.tierLimitExceeded.value
         assertThat(limitExceeded).isNotNull()
-        assertThat(limitExceeded?.requestedCount).isEqualTo(6)
-        assertThat(limitExceeded?.allowedCount).isEqualTo(5)
+        assertThat(limitExceeded?.requestedCount).isEqualTo(11)
+        assertThat(limitExceeded?.allowedCount).isEqualTo(10)
+        assertThat(limitExceeded?.freeLimit).isEqualTo(10)
+        assertThat(limitExceeded?.rewardedLimit).isEqualTo(25)
+        assertThat(limitExceeded?.canUnlockWithReward).isTrue()
         assertThat(limitExceeded?.isPdf).isTrue()
 
         // Proceeding with clamped limit
-        viewModel.proceedWithClampedLimit(5)
-        assertThat(executedUris).hasSize(5)
+        viewModel.proceedWithClampedLimit(10)
+        assertThat(executedUris).hasSize(10)
         assertThat(viewModel.tierLimitExceeded.value).isNull()
     }
 
     @Test
-    fun `checkAndExecuteIntake retries with full list when fast pass unlocked`() {
+    fun `checkAndExecuteIntake retries with full list when single batch pass unlocked`() {
         var executedUris: List<String>? = null
-        val eightUris = (1..8).map { "file:///img$it.jpg" }
+        val twelveUris = (1..12).map { "file:///img$it.jpg" }
 
-        viewModel.checkAndExecuteIntake(eightUris, com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF) { uris ->
+        viewModel.checkAndExecuteIntake(twelveUris, com.tapconvert.core.model.ConversionType.IMAGES_TO_PDF) { uris ->
             executedUris = uris
         }
 
         assertThat(executedUris).isNull()
         assertThat(viewModel.tierLimitExceeded.value).isNotNull()
 
-        // Unlock Fast Pass (up to 15 PDF images)
-        viewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+        // Unlock Single Batch Pass (up to 25 PDF images)
+        viewModel.unlockBatchMode(AdReward.SingleBatchUnlock())
         viewModel.retryPendingIntakeWithNewTier()
 
-        assertThat(executedUris).hasSize(8)
+        assertThat(executedUris).hasSize(12)
         assertThat(viewModel.tierLimitExceeded.value).isNull()
     }
 
