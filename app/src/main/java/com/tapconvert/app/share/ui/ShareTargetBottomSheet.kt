@@ -266,7 +266,7 @@ private fun ReadyContent(
                         fontWeight = FontWeight.ExtraBold
                     )
                     Text(
-                        text = "⚡ ${preset.description}",
+                        text = preset.description,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

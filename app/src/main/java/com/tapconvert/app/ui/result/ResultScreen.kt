@@ -626,10 +626,15 @@ fun ResultScreen(
                     modifier = Modifier
                         .size(54.dp)
                         .clip(CircleShape)
-                        .background(SavingsGreen.copy(alpha = 0.15f)),
+                        .background(Color(0xFFFFB800).copy(alpha = 0.15f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "🎉", fontSize = 26.sp)
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = Color(0xFFFFB800),
+                        modifier = Modifier.size(30.dp)
+                    )
                 }
 
                 Column(
@@ -675,7 +680,14 @@ fun ResultScreen(
                         .fillMaxWidth()
                         .height(50.dp)
                 ) {
-                    Text("Rate TapConvert ⭐", fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color(0xFFFFB800)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Rate TapConvert", fontWeight = FontWeight.Bold)
                 }
 
                 TextButton(

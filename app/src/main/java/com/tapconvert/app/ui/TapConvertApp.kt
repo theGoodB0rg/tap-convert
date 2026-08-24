@@ -407,81 +407,21 @@ fun TapConvertApp() {
             )
         }
 
-        // Fast Pass & Pro Monetization Dialog
+        // Fast Pass / Pro Monetization Modal
         if (showFastPassDialog) {
-            AlertDialog(
-                onDismissRequest = { showFastPassDialog = false },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Star,
-                        contentDescription = null,
-                        tint = AccentAmber,
-                        modifier = Modifier.size(36.dp)
-                    )
+            com.tapconvert.app.ui.components.monetization.ProPaywallDialog(
+                isPro = adState.isPro,
+                onPurchasePlan = { plan ->
+                    mainViewModel.purchasePro(plan)
+                    showFastPassDialog = false
+                    val planName = if (plan is com.tapconvert.core.ads.SubscriptionPlan.Annual) "Annual" else "Monthly"
+                    Toast.makeText(context, "Upgraded to TapConvert Pro $planName!", Toast.LENGTH_SHORT).show()
                 },
-                title = {
-                    Text(
-                        text = if (adState.isPro) "TapConvert Pro Active" else "Unlock TapConvert Pro",
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                onUnlockRewardedPass = {
+                    mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
+                    showFastPassDialog = false
                 },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "🚀 Massive Batch Conversions (Up to 500 photos & 100 media files)\n⚡ Maximum Processing Speed (Full multi-core performance)\n🛡️ 100% Ad-Free Experience (Zero interruptions)\n📄 Clean Watermark-Free PDFs (Professional export)",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        if (!adState.isPro) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Button(
-                                onClick = {
-                                    mainViewModel.purchasePro(com.tapconvert.core.ads.SubscriptionPlan.Annual)
-                                    showFastPassDialog = false
-                                    Toast.makeText(context, "Upgraded to TapConvert Pro Annual!", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text("Upgrade to Pro Annual – $9.99/yr (Best Value)", maxLines = 1, softWrap = false)
-                            }
-                            OutlinedButton(
-                                onClick = {
-                                    mainViewModel.purchasePro(com.tapconvert.core.ads.SubscriptionPlan.Monthly)
-                                    showFastPassDialog = false
-                                    Toast.makeText(context, "Upgraded to TapConvert Pro Monthly!", Toast.LENGTH_SHORT).show()
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Upgrade to Pro Monthly – $0.99/mo", maxLines = 1, softWrap = false)
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (!adState.isPro) {
-                        FilledTonalButton(
-                            onClick = {
-                                mainViewModel.unlockBatchMode(AdReward.BatchModeUnlock())
-                                showFastPassDialog = false
-                            }
-                        ) {
-                            Text("Unlock 24h Power Pass (Watch Quick Video)", maxLines = 1, softWrap = false)
-                        }
-                    } else {
-                        Button(onClick = { showFastPassDialog = false }) {
-                            Text("Done", maxLines = 1, softWrap = false)
-                        }
-                    }
-                },
-                dismissButton = {
-                    if (!adState.isPro) {
-                        TextButton(onClick = { showFastPassDialog = false }) {
-                            Text("Maybe Later", maxLines = 1, softWrap = false)
-                        }
-                    }
-                }
+                onDismiss = { showFastPassDialog = false }
             )
         }
 
@@ -578,10 +518,10 @@ fun TapConvertApp() {
                                 if (adState.isBatchModeUnlocked()) {
                                     AssistChip(
                                         onClick = { showFastPassDialog = true },
-                                        label = { Text("⚡ 24h Pass Active", maxLines = 1, softWrap = false) },
+                                        label = { Text("24h Pass Active") },
                                         leadingIcon = {
                                             Icon(
-                                                imageVector = Icons.Default.Star,
+                                                imageVector = Icons.Default.Bolt,
                                                 contentDescription = null,
                                                 modifier = Modifier.size(16.dp),
                                                 tint = AccentAmber
@@ -601,7 +541,7 @@ fun TapConvertApp() {
                                             tint = AccentAmber
                                         )
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("⚡ Power Pass", style = MaterialTheme.typography.labelSmall, maxLines = 1, softWrap = false)
+                                        Text("Power Pass", style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
                             }

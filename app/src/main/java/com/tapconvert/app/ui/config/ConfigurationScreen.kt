@@ -545,12 +545,10 @@ fun ConfigurationScreen(
                                 )
                             }
                             Text(
-                                text = "⚡ Fast Mode",
+                                text = "Fast Mode",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                softWrap = false
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }

@@ -65,7 +65,7 @@ fun TierLimitExceededDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Convert first ${limitInfo.allowedCount} $unitName", maxLines = 1, softWrap = false)
+                    Text("Convert First ${limitInfo.allowedCount} $unitName")
                 }
 
                 // Option 2: Watch Ad for 24h Power Pass (if not already active)
@@ -76,12 +76,11 @@ fun TierLimitExceededDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp), tint = AccentAmber)
+                        Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(18.dp), tint = AccentAmber)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (limitInfo.isPdf) "⚡ Unlock 15 Photos for 24h (Watch Video)" else "⚡ Unlock 10 Files for 24h (Watch Video)",
-                            maxLines = 1,
-                            softWrap = false
+                            text = if (limitInfo.isPdf) "Unlock 15 Photos (Watch Video)" else "Unlock 10 Files (Watch Video)",
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -93,12 +92,11 @@ fun TierLimitExceededDialog(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(16.dp), tint = AccentAmber)
+                        Icon(Icons.Default.Star, contentDescription = null, modifier = Modifier.size(18.dp), tint = AccentAmber)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = if (limitInfo.isPdf) "⭐ Get Pro (Up to 500 Photos)" else "⭐ Get Pro (Up to 100 Files)",
-                            maxLines = 1,
-                            softWrap = false
+                            text = "Upgrade to Pro",
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -108,7 +106,7 @@ fun TierLimitExceededDialog(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("Cancel", maxLines = 1, softWrap = false)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         },
