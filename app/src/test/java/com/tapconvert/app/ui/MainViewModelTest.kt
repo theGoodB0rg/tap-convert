@@ -120,6 +120,24 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `user quality slider adjustments update quality while maintaining preset context`() {
+        val largeFile = tempFolder.newFile("large_video.mp4").apply {
+            writeBytes(ByteArray(50 * 1024 * 1024) { 0x33 }) // 50 MB
+        }
+
+        // WhatsApp preset is 16 MB -> calibrated to ~30%
+        viewModel.selectPreset(Preset.WhatsAppVideo16MB, listOf("file://${largeFile.absolutePath}"))
+        var config = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(config.request.preset).isEqualTo(Preset.WhatsAppVideo16MB)
+
+        // User manually adjusts slider up to 75%
+        viewModel.updateQuality(ConversionQuality.Custom(75))
+        config = viewModel.uiState.value as ConversionUiState.Configuring
+        assertThat(config.request.quality).isEqualTo(ConversionQuality.Custom(75))
+        assertThat(config.request.preset).isEqualTo(Preset.WhatsAppVideo16MB)
+    }
+
+    @Test
     fun `cancelConversion resets state to Idle`() {
         viewModel.selectPreset(Preset.WhatsAppVideo16MB, listOf("file:///video.mp4"))
         assertThat(viewModel.uiState.value).isInstanceOf(ConversionUiState.Configuring::class.java)

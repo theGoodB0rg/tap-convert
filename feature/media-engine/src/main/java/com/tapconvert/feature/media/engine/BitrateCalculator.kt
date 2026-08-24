@@ -20,8 +20,8 @@ object BitrateCalculator {
 
     const val DEFAULT_AUDIO_BITRATE_BPS = 128_000 // 128 kbps
     const val MIN_VIDEO_BITRATE_BPS = 120_000     // 120 kbps
-    const val MAX_VIDEO_BITRATE_BPS = 12_000_000  // 12 Mbps
-    const val DEFAULT_SAFETY_OVERHEAD = 0.12      // 12% headroom for container & VBR peak jitter
+    const val MAX_VIDEO_BITRATE_BPS = 8_000_000   // 8 Mbps (avoids bloated camera bitrates, favoring real compression)
+    const val DEFAULT_SAFETY_OVERHEAD = 0.15      // 15% headroom for container & VBR peak jitter
 
     /**
      * Calculates the optimal video and audio bitrate and resolution to strictly fit within targetSize or quality constraints.
@@ -40,15 +40,13 @@ object BitrateCalculator {
         val safeDuration = durationSeconds.coerceAtLeast(0.5)
         val qualityPct = quality.qualityPercent.coerceIn(1, 100)
 
-        // Strict Downward Sizing Guarantee:
-        // If source size is known, target bytes must never exceed sourceSizeBytes * (qualityPct / 100)
+        // Sizing Budget Calculation:
+        // 1. If source size is known, the quality percentage (calibrated preset ratio or manual slider)
+        //    strictly dictates target bytes, ensuring the slider has real authority over output sizing.
+        // 2. If source size is unknown, targetSize is used as the target budget.
         val effectiveTargetBytes: Long = when {
-            targetSize != null && sourceSizeBytes > 0L -> {
-                val sourceBudget = (sourceSizeBytes * (qualityPct / 100.0)).toLong()
-                min(targetSize.bytes, sourceBudget).coerceAtLeast(100_000L)
-            }
-            targetSize != null -> targetSize.bytes.coerceAtLeast(100_000L)
             sourceSizeBytes > 0L -> ((sourceSizeBytes * (qualityPct / 100.0)).toLong()).coerceAtLeast(100_000L)
+            targetSize != null -> targetSize.bytes.coerceAtLeast(100_000L)
             else -> TargetSize.fromMegabytes(16).bytes
         }
 

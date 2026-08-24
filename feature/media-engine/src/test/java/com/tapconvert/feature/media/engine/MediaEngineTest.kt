@@ -142,11 +142,15 @@ class MediaEngineTest {
             quality = ConversionQuality.Custom(10) // 10% quality budget = ~512KB target
         )
 
+        val emittedProgressStrings = mutableListOf<String>()
         engine.compressVideo(request, tempDir).test {
             // Should emit progress items and finally success
             var lastItem: AppResult<ConversionResult>? = null
             while (true) {
                 val item = awaitItem()
+                if (item is AppResult.Progress) {
+                    emittedProgressStrings.add(item.currentStep)
+                }
                 lastItem = item
                 if (item is AppResult.Success || item is AppResult.Error) break
             }
@@ -164,6 +168,12 @@ class MediaEngineTest {
         // Verify that transcoder was called twice (initial + compensated retry)
         assertThat(callCount).isEqualTo(2)
         assertThat(fakeAnalytics.completedConversions).hasSize(1)
+
+        // Progress messages must never expose internal retry or attempt counters to the user
+        for (stepDesc in emittedProgressStrings) {
+            assertThat(stepDesc.lowercase()).doesNotContain("attempt")
+            assertThat(stepDesc.lowercase()).doesNotContain("retry")
+        }
     }
 
     @Test

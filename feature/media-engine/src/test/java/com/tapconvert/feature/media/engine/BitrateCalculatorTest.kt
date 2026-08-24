@@ -242,4 +242,41 @@ class BitrateCalculatorTest {
 
         assertThat(spec40Pct.effectiveTargetBytes).isEqualTo((sourceSize * 0.40).toLong())
     }
+
+    @Test
+    fun `custom quality slider percentage takes precedence over preset target size when user chooses higher quality`() {
+        val sourceSize = 100 * 1024 * 1024L // 100 MB
+        val target16Mb = TargetSize.fromMegabytes(16) // 16 MB WhatsApp target
+
+        // User dragged slider up to 40% (40 MB target)
+        val spec40Pct = BitrateCalculator.calculateTargetBitrate(
+            targetSize = target16Mb,
+            durationSeconds = 60.0,
+            sourceSizeBytes = sourceSize,
+            quality = ConversionQuality.Custom(40)
+        )
+
+        // Effective budget should reflect the user's explicit 40% (40 MB), not be silently clamped to 16 MB
+        val expected40Mb = (sourceSize * 0.40).toLong()
+        assertThat(spec40Pct.effectiveTargetBytes).isEqualTo(expected40Mb)
+        assertThat(spec40Pct.videoBitrateBps).isGreaterThan(BitrateCalculator.calculateTargetBitrate(target16Mb, 60.0).videoBitrateBps)
+    }
+
+    @Test
+    fun `compression favoring guarantees max video bitrate prevents no-op on bloated camera files`() {
+        val largeSource = 500 * 1024 * 1024L // 500 MB 1080p camera recording
+        val duration60s = 60.0 // ~66 Mbps raw camera bitrate
+
+        val spec100Pct = BitrateCalculator.calculateTargetBitrate(
+            targetSize = null,
+            durationSeconds = duration60s,
+            sourceSizeBytes = largeSource,
+            quality = ConversionQuality.Original // 100%
+        )
+
+        // Maximum video bitrate must be capped (e.g. <= 8 Mbps) so user always gets meaningful compression
+        assertThat(spec100Pct.videoBitrateBps).isAtMost(BitrateCalculator.MAX_VIDEO_BITRATE_BPS)
+        assertThat(spec100Pct.videoBitrateBps).isAtMost(8_000_000)
+    }
 }
+

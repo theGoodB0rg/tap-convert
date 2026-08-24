@@ -116,13 +116,11 @@ class DefaultMediaEngine(
             while (attempt <= maxAttempts && !transcodeSuccess) {
                 if (tempFile.exists()) tempFile.delete()
 
-                val attemptStepDesc = if (attempt > 1) "Compensating compression rate (attempt $attempt)..." else null
-
                 transcoder.transcode(sourceFile, tempFile, encodingSpec).collect { transcodeResult ->
                     when (transcodeResult) {
                         is AppResult.Progress -> {
                             val mappedPct = baseProgress + (35 + transcodeResult.percentage * 0.55f) / totalFiles
-                            val stepText = attemptStepDesc ?: ConversionProgress(mappedPct.toInt(), ConversionStage.COMPRESSING).overallSummary
+                            val stepText = ConversionProgress(mappedPct.toInt(), ConversionStage.COMPRESSING).overallSummary
                             emit(AppResult.Progress(mappedPct.toInt(), stepText))
                         }
                         is AppResult.Success -> {
@@ -139,9 +137,8 @@ class DefaultMediaEngine(
                     val targetBudget = encodingSpec.effectiveTargetBytes
 
                     // Closed-Loop Verification:
-                    // If hardware encoder significantly overshot target size (by > 3%),
-                    // trigger 1-pass compensation with reduced bitrate
-                    if (actualBytes > targetBudget * 1.03 && attempt < maxAttempts && originalSize > 0L) {
+                    // Only trigger fallback compensation if encoder severely overshot budget (by > 15%)
+                    if (actualBytes > targetBudget * 1.15 && attempt < maxAttempts && originalSize > 0L) {
                         val overshootFactor = targetBudget.toDouble() / actualBytes.toDouble()
                         val reduction = (overshootFactor * 0.90).coerceIn(0.60, 0.85)
                         encodingSpec = BitrateCalculator.createCompensatedSpec(encodingSpec, reduction)

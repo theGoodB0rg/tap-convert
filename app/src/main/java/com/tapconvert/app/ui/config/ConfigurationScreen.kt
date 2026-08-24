@@ -14,9 +14,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.*
@@ -75,18 +78,31 @@ fun ConfigurationScreen(
         (100 - sliderPosition.toInt()).coerceIn(5, 95)
     }
 
-    val estimatedTargetBytes = remember(sliderPosition, totalSourceBytes, request.targetSize) {
-        val reqTarget = request.targetSize
+    val estimatedTargetBytes = remember(sliderPosition, totalSourceBytes) {
         if (totalSourceBytes > 0L) {
-            val qualityBudget = (totalSourceBytes * (sliderPosition / 100f)).toLong()
-            if (reqTarget != null) {
-                minOf(reqTarget.bytes, qualityBudget)
+            (totalSourceBytes * (sliderPosition / 100f)).toLong()
+        } else {
+            request.targetSize?.bytes ?: 0L
+        }
+    }
+
+    val presetCapBytes = request.targetSize?.bytes
+    val recommendedPresetQualityPct = remember(totalSourceBytes, request.preset) {
+        val preset = request.preset
+        val target = preset?.targetSize?.bytes
+        if (target != null && totalSourceBytes > 0L) {
+            if (totalSourceBytes <= target) {
+                90
             } else {
-                qualityBudget
+                (target.toDouble() / totalSourceBytes.toDouble() * 0.95 * 100.0).toInt().coerceIn(10, 95)
             }
         } else {
-            reqTarget?.bytes ?: 0L
+            preset?.quality?.qualityPercent ?: 70
         }
+    }
+
+    val isExceedingPresetLimit = remember(estimatedTargetBytes, presetCapBytes) {
+        presetCapBytes != null && estimatedTargetBytes > (presetCapBytes * 1.03)
     }
 
     // Enlarged Image Inspection Dialog
@@ -185,14 +201,14 @@ fun ConfigurationScreen(
                         )
                     ) {
                         val activePreset = request.preset
+                        val buttonText = when {
+                            activePreset != null && isExceedingPresetLimit -> "Convert Anyway (${formatSize(estimatedTargetBytes)})"
+                            activePreset != null -> "Convert via ${activePreset.name}"
+                            request.conversionType == ConversionType.IMAGES_TO_PDF -> "Create PDF (${sourceFileNames.size} pages)"
+                            else -> "Start Offline Conversion"
+                        }
                         Text(
-                            text = if (activePreset != null) {
-                                "Convert via ${activePreset.name}"
-                            } else if (request.conversionType == ConversionType.IMAGES_TO_PDF) {
-                                "Create PDF (${sourceFileNames.size} pages)"
-                            } else {
-                                "Start Offline Conversion"
-                            },
+                            text = buttonText,
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -531,25 +547,99 @@ fun ConfigurationScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Text(
                                     text = if (estimatedTargetBytes > 0L) "Target Output ≈ ${formatSize(estimatedTargetBytes)}" else "Estimated Reclaimed Space",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = "~$estimatedSavingsPct% Smaller Output",
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = SavingsGreen
+                                    color = SavingsGreen,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                             Text(
                                 text = "Fast Mode",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(start = 8.dp)
                             )
+                        }
+                    }
+
+                    // Preset Cap Live Guidance (Zero Emojis, Responsive Material Icons Only)
+                    if (presetCapBytes != null) {
+                        Surface(
+                            color = if (isExceedingPresetLimit) MaterialTheme.colorScheme.surface else SavingsGreen.copy(alpha = 0.10f),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f, fill = false),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isExceedingPresetLimit) Icons.Default.Info else Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = if (isExceedingPresetLimit) MaterialTheme.colorScheme.primary else SavingsGreen,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (isExceedingPresetLimit) {
+                                            "Exceeds ${request.preset?.name ?: "preset"} limit (${request.targetSize?.formatted() ?: ""})"
+                                        } else {
+                                            "Fits ${request.preset?.name ?: "preset"} limit"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (isExceedingPresetLimit) MaterialTheme.colorScheme.onSurfaceVariant else SavingsGreen,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                if (isExceedingPresetLimit) {
+                                    TextButton(
+                                        onClick = {
+                                            sliderPosition = recommendedPresetQualityPct.toFloat()
+                                            onQualityChange(ConversionQuality.Custom(recommendedPresetQualityPct))
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.defaultMinSize(minHeight = 28.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.RestartAlt,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                            Text(
+                                                text = "Reset",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
