@@ -92,4 +92,41 @@ class Media3VideoTranscoderTest {
             awaitComplete()
         }
     }
+
+    @Test
+    fun `transcode delegates to fallback transcoder when media3 fails`() = runTest {
+        var fallbackCalled = false
+        val customFallback = object : VideoTranscoder {
+            override fun transcode(
+                sourceFile: File,
+                outputFile: File,
+                encodingSpec: BitrateCalculator.VideoEncodingSpec
+            ): kotlinx.coroutines.flow.Flow<AppResult<File>> = kotlinx.coroutines.flow.flow {
+                fallbackCalled = true
+                outputFile.writeBytes(ByteArray(100) { 0x77 })
+                emit(AppResult.Success(outputFile))
+            }
+        }
+
+        val dummyContext = object : android.content.ContextWrapper(null) {
+            override fun getApplicationContext(): android.content.Context = this
+        }
+        val transcoder = Media3VideoTranscoder(
+            context = dummyContext,
+            mainDispatcher = kotlinx.coroutines.Dispatchers.Unconfined,
+            looper = null,
+            fallbackTranscoder = customFallback
+        )
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 30.0
+        )
+
+        transcoder.transcode(sourceFile, outputFile, spec).test {
+            val item = awaitItem()
+            assertThat(item.isSuccess).isTrue()
+            awaitComplete()
+        }
+        assertThat(fallbackCalled).isTrue()
+    }
 }

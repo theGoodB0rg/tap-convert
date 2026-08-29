@@ -130,11 +130,13 @@ class NativeVideoTranscoder : VideoTranscoder {
             var muxerStarted = false
             var muxerVideoTrack = -1
             var muxerAudioTrack = -1
-            val pendingAudioSamples = mutableListOf<AudioSamplePacket>()
 
             var decoderDone = false
             var encoderDone = false
+            var audioDone = false
             val bufferInfo = MediaCodec.BufferInfo()
+            val audioBuffer = ByteBuffer.allocate(256 * 1024)
+            val audioBufferInfo = MediaCodec.BufferInfo()
             val kTimeoutUs = 10_000L
 
             var lastReportedProgress = 5
@@ -159,14 +161,18 @@ class NativeVideoTranscoder : VideoTranscoder {
                     }
                 }
 
-                // 2. Dequeue decoded frames and render onto encoder's input surface
+                // 2. Dequeue decoded frames and render onto encoder's input surface with accurate presentation timestamp (in nanoseconds)
                 var decoderOutputAvailable = true
                 while (decoderOutputAvailable && !isCancelled) {
                     val decoderStatus = decoder.dequeueOutputBuffer(bufferInfo, kTimeoutUs)
                     when {
                         decoderStatus >= 0 -> {
-                            val render = bufferInfo.size > 0
-                            decoder.releaseOutputBuffer(decoderStatus, render)
+                            if (bufferInfo.size > 0) {
+                                // Must pass nanoseconds timestamp to encoder input surface to prevent wall-clock fallback distortion
+                                decoder.releaseOutputBuffer(decoderStatus, bufferInfo.presentationTimeUs * 1000L)
+                            } else {
+                                decoder.releaseOutputBuffer(decoderStatus, false)
+                            }
                             if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                                 encoder.signalEndOfInputStream()
                                 decoderOutputAvailable = false
@@ -198,12 +204,6 @@ class NativeVideoTranscoder : VideoTranscoder {
                             }
                             muxer.start()
                             muxerStarted = true
-
-                            // Drain pending audio samples if any
-                            for (sample in pendingAudioSamples) {
-                                muxer.writeSampleData(muxerAudioTrack, sample.buffer, sample.info)
-                            }
-                            pendingAudioSamples.clear()
                         }
                         encoderStatus >= 0 -> {
                             val encodedBuffer = encoder.getOutputBuffer(encoderStatus)
@@ -216,6 +216,31 @@ class NativeVideoTranscoder : VideoTranscoder {
                                     encodedBuffer.position(bufferInfo.offset)
                                     encodedBuffer.limit(bufferInfo.offset + bufferInfo.size)
                                     muxer.writeSampleData(muxerVideoTrack, encodedBuffer, bufferInfo)
+
+                                    // Interleave audio samples up to current video PTS
+                                    if (audioTrackIndex != -1 && muxerAudioTrack != -1 && !audioDone) {
+                                        while (true) {
+                                            val audioSampleTime = audioExtractor.sampleTime
+                                            if (audioSampleTime < 0 || audioSampleTime > bufferInfo.presentationTimeUs) {
+                                                if (audioSampleTime < 0) audioDone = true
+                                                break
+                                            }
+                                            audioBufferInfo.offset = 0
+                                            val sampleSize = audioExtractor.readSampleData(audioBuffer, 0)
+                                            if (sampleSize < 0) {
+                                                audioDone = true
+                                                break
+                                            }
+                                            audioBufferInfo.size = sampleSize
+                                            audioBufferInfo.presentationTimeUs = audioSampleTime
+                                            audioBufferInfo.flags = audioExtractor.sampleFlags
+
+                                            audioBuffer.position(0)
+                                            audioBuffer.limit(sampleSize)
+                                            muxer.writeSampleData(muxerAudioTrack, audioBuffer, audioBufferInfo)
+                                            audioExtractor.advance()
+                                        }
+                                    }
 
                                     val progressPct = ((bufferInfo.presentationTimeUs.toFloat() / durationUs.toFloat()) * 85f).toInt() + 10
                                     val clamped = progressPct.coerceIn(10, 95)
@@ -244,12 +269,9 @@ class NativeVideoTranscoder : VideoTranscoder {
                 return@flow
             }
 
-            // 4. Mux remaining audio track samples
-            if (audioTrackIndex != -1 && muxerStarted && muxerAudioTrack != -1) {
-                emit(AppResult.Progress(96, "Muxing audio stream..."))
-                val audioBuffer = ByteBuffer.allocate(256 * 1024)
-                val audioBufferInfo = MediaCodec.BufferInfo()
-
+            // 4. Mux any remaining trailing audio track samples to completion
+            if (audioTrackIndex != -1 && muxerStarted && muxerAudioTrack != -1 && !audioDone) {
+                emit(AppResult.Progress(96, "Finalizing audio stream..."))
                 while (true) {
                     audioBufferInfo.offset = 0
                     val sampleSize = audioExtractor.readSampleData(audioBuffer, 0)
@@ -296,11 +318,6 @@ class NativeVideoTranscoder : VideoTranscoder {
     override fun cancel() {
         isCancelled = true
     }
-
-    private data class AudioSamplePacket(
-        val buffer: ByteBuffer,
-        val info: MediaCodec.BufferInfo
-    )
 
     private fun computeTargetDimensions(
         sourceWidth: Int,

@@ -182,6 +182,58 @@ object ShareHelper {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
     }
+
+    const val DOCUMENT_MIME_TYPE = "application/octet-stream"
+
+    /**
+     * Builds a single-file document share intent (ACTION_SEND with application/octet-stream).
+     * Bypasses third-party app in-editor compressors and auto-trimming tools (e.g. WhatsApp video trimmer).
+     */
+    fun buildShareAsDocumentIntent(
+        context: Context,
+        filePathOrUri: String
+    ): Intent {
+        return buildShareIntent(
+            context = context,
+            filePathOrUri = filePathOrUri,
+            explicitMimeType = DOCUMENT_MIME_TYPE
+        )
+    }
+
+    fun createShareAsDocumentChooserIntent(
+        context: Context,
+        filePathOrUri: String,
+        title: String = "Share as File"
+    ): Intent {
+        val shareIntent = buildShareAsDocumentIntent(context, filePathOrUri)
+        val chooser = Intent.createChooser(shareIntent, title)
+        return chooser ?: shareIntent.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
+
+    fun buildMultipleShareAsDocumentIntent(
+        context: Context,
+        filePathsOrUris: List<String>
+    ): Intent {
+        return buildMultipleShareIntent(
+            context = context,
+            filePathsOrUris = filePathsOrUris,
+            explicitMimeType = DOCUMENT_MIME_TYPE
+        )
+    }
+
+    fun createMultipleShareAsDocumentChooserIntent(
+        context: Context,
+        filePathsOrUris: List<String>,
+        title: String = "Share as Files"
+    ): Intent {
+        val shareIntent = buildMultipleShareAsDocumentIntent(context, filePathsOrUris)
+        val chooser = Intent.createChooser(shareIntent, title)
+        return chooser ?: shareIntent.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+    }
 }
 
 

@@ -698,6 +698,14 @@ fun TapConvertApp() {
                                     val chooserIntent = ShareHelper.createMultipleShareChooserIntent(context, uris)
                                     context.startActivity(chooserIntent)
                                 },
+                                onShareAsDocumentClick = { filePath ->
+                                    val chooserIntent = ShareHelper.createShareAsDocumentChooserIntent(context, filePath)
+                                    context.startActivity(chooserIntent)
+                                },
+                                onShareMultipleAsDocumentClick = { uris ->
+                                    val chooserIntent = ShareHelper.createMultipleShareAsDocumentChooserIntent(context, uris)
+                                    context.startActivity(chooserIntent)
+                                },
                                 onFavoriteToggle = { id, fav -> mainViewModel.toggleFavorite(id, fav) },
                                 onDoneClick = { mainViewModel.resetToIdle() },
                                 isPro = adState.isPro,

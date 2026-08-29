@@ -41,6 +41,8 @@ fun ResultScreen(
     record: ConversionRecordEntity,
     onShareClick: (String) -> Unit,
     onShareMultipleClick: (List<String>) -> Unit = { list -> list.firstOrNull()?.let { onShareClick(it) } },
+    onShareAsDocumentClick: (String) -> Unit = onShareClick,
+    onShareMultipleAsDocumentClick: (List<String>) -> Unit = onShareMultipleClick,
     onFavoriteToggle: (String, Boolean) -> Unit,
     onDoneClick: () -> Unit,
     isPro: Boolean = false,
@@ -655,6 +657,38 @@ fun ResultScreen(
                 Text(
                     text = if (isBatch) "Share All (${result.outputUris.size})" else "Share Converted",
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        if (result.conversionType == com.tapconvert.core.model.ConversionType.VIDEO_COMPRESS) {
+            OutlinedButton(
+                onClick = {
+                    if (isBatch) {
+                        onShareMultipleAsDocumentClick(result.outputUris)
+                    } else {
+                        result.outputUris.firstOrNull()?.let { onShareAsDocumentClick(it) }
+                    }
+                },
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (isBatch) "Share as Files" else "Share as File",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     softWrap = false,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis

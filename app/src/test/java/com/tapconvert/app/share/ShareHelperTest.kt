@@ -95,6 +95,36 @@ class ShareHelperTest {
         val chooser = ShareHelper.createMultipleShareChooserIntent(dummyContext, listOf(file1.absolutePath, file2.absolutePath))
         assertThat(chooser).isNotNull()
     }
+
+    @Test
+    fun `buildShareAsDocumentIntent uses application octet-stream MIME type`() {
+        val dummyContext = object : ContextWrapper(null) {
+            override fun getPackageName(): String = "com.tapconvert.app"
+        }
+        val file = tempFolder.newFile("video_to_share.mp4")
+
+        val intent = ShareHelper.buildShareAsDocumentIntent(dummyContext, file.absolutePath)
+        assertThat(intent).isNotNull()
+        assertThat(ShareHelper.DOCUMENT_MIME_TYPE).isEqualTo("application/octet-stream")
+
+        val chooser = ShareHelper.createShareAsDocumentChooserIntent(dummyContext, file.absolutePath)
+        assertThat(chooser).isNotNull()
+    }
+
+    @Test
+    fun `buildMultipleShareAsDocumentIntent creates valid batch document intent`() {
+        val dummyContext = object : ContextWrapper(null) {
+            override fun getPackageName(): String = "com.tapconvert.app"
+        }
+        val file1 = tempFolder.newFile("vid1.mp4")
+        val file2 = tempFolder.newFile("vid2.mp4")
+
+        val intent = ShareHelper.buildMultipleShareAsDocumentIntent(dummyContext, listOf(file1.absolutePath, file2.absolutePath))
+        assertThat(intent).isNotNull()
+
+        val chooser = ShareHelper.createMultipleShareAsDocumentChooserIntent(dummyContext, listOf(file1.absolutePath, file2.absolutePath))
+        assertThat(chooser).isNotNull()
+    }
 }
 
 
