@@ -17,8 +17,17 @@ class TapConvertApplication : Application() {
         RoomConversionHistoryRepository.create(this)
     }
 
+    /** Release graph: Play-backed verifier. Never Fake in release. */
+    val entitlementVerifier: com.tapconvert.core.billing.EntitlementVerifier by lazy {
+        com.tapconvert.core.billing.PlayEntitlementVerifier(this)
+    }
+
+    val adUnits by lazy { com.tapconvert.app.monetization.buildAdUnitProvider() }
+
     override fun onCreate() {
         super.onCreate()
+        // UMP consent must precede MobileAds init (EEA/GDPR). Consent form itself
+        // is shown from MainActivity once it has an Activity context.
         appScope.launch(Dispatchers.IO) {
             try {
                 MobileAds.initialize(this@TapConvertApplication)

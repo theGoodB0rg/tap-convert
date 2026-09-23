@@ -20,7 +20,8 @@ import com.tapconvert.core.ads.AdMobAdLoader
 @Composable
 fun AdaptiveBannerAd(
     isAdFree: Boolean,
-    adUnitId: String = AdMobAdLoader.TEST_BANNER_AD_UNIT_ID,
+    // Real ID injected via BuildConfig in release; test ID only as safe default.
+    adUnitId: String = com.tapconvert.app.BuildConfig.ADMOB_BANNER_ID,
     onImpression: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {

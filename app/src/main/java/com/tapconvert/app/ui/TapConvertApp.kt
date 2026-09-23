@@ -106,15 +106,35 @@ fun TapConvertApp() {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             val appContext = context.applicationContext
+            val verifier = (appContext as? TapConvertApplication)?.entitlementVerifier
             return MainViewModel(
                 mediaEngine = DefaultMediaEngine.create(appContext),
                 historyRepository = repository,
                 reviewPromptManager = reviewPromptManager,
                 reviewLauncher = reviewLauncher,
-                lifetimeStatsManager = lifetimeStatsManager
+                lifetimeStatsManager = lifetimeStatsManager,
+                isProVerifiedProvider = verifier?.let { v ->
+                    { v.entitlement.value.isProVerified() }
+                }
             ) as T
         }
     })
+
+    // Always-online Pro: refresh verified entitlement on launch + resume.
+    // Free conversions work offline; Pro gates require PLAY_FRESH (<10min).
+    LaunchedEffect(Unit) {
+        // UMP consent first (EEA/GDPR), then entitlement refresh.
+        runCatching {
+            val activity = context as? Activity ?: return@runCatching
+            val gate = com.tapconvert.app.monetization.UmpConsentGate(activity)
+            gate.requestConsent(activity)
+        }
+        runCatching {
+            val verifier = (context.applicationContext as? TapConvertApplication)?.entitlementVerifier
+                ?: return@runCatching
+            mainViewModel.refreshVerifiedEntitlement(verifier)
+        }
+    }
 
     val historyViewModel: HistoryViewModel = viewModel(factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -320,14 +340,27 @@ fun TapConvertApp() {
             com.tapconvert.app.ui.components.monetization.ProPaywallDialog(
                 isPro = adState.isPro,
                 onPurchasePlan = { plan ->
-                    mainViewModel.purchasePro(plan)
-                    showFastPassDialog = false
-                    val planName = when (plan) {
-                        is com.tapconvert.core.ads.SubscriptionPlan.Lifetime -> "Lifetime"
-                        is com.tapconvert.core.ads.SubscriptionPlan.Annual -> "Annual"
-                        is com.tapconvert.core.ads.SubscriptionPlan.Monthly -> "Monthly"
+                    val activity = context as? Activity
+                    val verifier = (context.applicationContext as? TapConvertApplication)?.entitlementVerifier
+                    if (activity == null || verifier == null) {
+                        Toast.makeText(context, "Unable to start purchase. Try again.", Toast.LENGTH_SHORT).show()
+                    } else {
+                        coroutineScope.launch {
+                            val verified = mainViewModel.purchaseProVerified(activity, plan, verifier)
+                            showFastPassDialog = false
+                            val planName = when (plan) {
+                                is com.tapconvert.core.ads.SubscriptionPlan.Lifetime -> "Lifetime"
+                                is com.tapconvert.core.ads.SubscriptionPlan.Annual -> "Annual"
+                                is com.tapconvert.core.ads.SubscriptionPlan.Monthly -> "Monthly"
+                            }
+                            Toast.makeText(
+                                context,
+                                if (verified) "Upgraded to TapConvert Pro $planName!"
+                                else "Purchase pending — connect online to verify Pro.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     }
-                    Toast.makeText(context, "Upgraded to TapConvert Pro $planName!", Toast.LENGTH_SHORT).show()
                 },
                 onUnlockRewardedPass = {
                     mainViewModel.unlockBatchMode(AdReward.SingleBatchUnlock())

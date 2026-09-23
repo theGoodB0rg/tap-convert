@@ -67,8 +67,20 @@ class MainViewModel(
     private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker(),
     private val mediaIntakeManager: MediaIntakeManager = DefaultMediaIntakeManager(),
     private val mediaIntakeClassifier: MediaIntakeClassifier = DefaultMediaIntakeClassifier(),
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /**
+     * Release must inject a freshly-verified Pro flag (Play query <10min).
+     * Null = legacy local-boolean path (tests, previews). Never null in release.
+     */
+    private val isProVerifiedProvider: (() -> Boolean)? = null
 ) : ViewModel() {
+
+    private val _isProVerified = MutableStateFlow(false)
+    /** UI hint of verified Pro. Gates must read [isProVerifiedNow], not adManager.state. */
+    val isProVerified: StateFlow<Boolean> = _isProVerified.asStateFlow()
+
+    private fun isProVerifiedNow(): Boolean =
+        isProVerifiedProvider?.invoke() ?: adManager.state.value.isPro
 
     val lifetimeReclaimedBytes: Flow<Long> = lifetimeStatsManager.lifetimeReclaimedBytes
     val lifetimeConversionsCount: Flow<Int> = lifetimeStatsManager.lifetimeConversionsCount
@@ -151,11 +163,20 @@ class MainViewModel(
         conversionType: ConversionType,
         onAllowed: (List<String>) -> Unit
     ) {
-        val validation = TierLimitValidator.validate(
-            fileCount = sourceUris.size,
-            conversionType = conversionType,
-            adState = adManager.state.value
-        )
+        val validation = if (isProVerifiedProvider != null) {
+            TierLimitValidator.validateVerified(
+                fileCount = sourceUris.size,
+                conversionType = conversionType,
+                adState = adManager.state.value,
+                isProVerified = isProVerifiedNow()
+            )
+        } else {
+            TierLimitValidator.validate(
+                fileCount = sourceUris.size,
+                conversionType = conversionType,
+                adState = adManager.state.value
+            )
+        }
         when (validation) {
             is TierLimitResult.Allowed -> {
                 onAllowed(sourceUris)
@@ -270,7 +291,7 @@ class MainViewModel(
     fun updateIncludeBranding(includeBranding: Boolean): Boolean {
         val current = _uiState.value
         if (current is ConversionUiState.Configuring) {
-            if (!includeBranding && !adManager.state.value.isPro) {
+            if (!includeBranding && !isProVerifiedNow()) {
                 return false
             }
             _uiState.value = current.copy(request = current.request.copy(includeBranding = includeBranding))
@@ -439,5 +460,51 @@ class MainViewModel(
     fun purchasePro(plan: com.tapconvert.core.ads.SubscriptionPlan = com.tapconvert.core.ads.SubscriptionPlan.Lifetime) {
         adManager.setPro(true, plan.tier)
         analyticsTracker.logPaywallPlanSelected(plan.productId, plan.tier.name)
+    }
+
+    /**
+     * Release Pro sync: call after EntitlementVerifier.refresh() with a FRESH result.
+     * Updates UI hint only — enforcement gates read the verifier snapshot directly.
+     */
+    fun syncVerifiedEntitlement(isProVerified: Boolean, tier: com.tapconvert.core.ads.SubscriptionTier) {
+        _isProVerified.value = isProVerified
+        // UI hint sync; harmless if patched because gates do not read this.
+        adManager.setPro(isProVerified, if (isProVerified) tier else com.tapconvert.core.ads.SubscriptionTier.FREE)
+    }
+
+    /**
+     * Release purchase flow: launches Play billing, then refreshes entitlement.
+     * Returns fresh isProVerified. Callers must handle false = stay on Free.
+     */
+    suspend fun purchaseProVerified(
+        activity: android.app.Activity,
+        plan: com.tapconvert.core.ads.SubscriptionPlan,
+        verifier: com.tapconvert.core.billing.EntitlementVerifier
+    ): Boolean {
+        analyticsTracker.logPaywallPlanSelected(plan.productId, plan.tier.name)
+        val launched = try {
+            verifier.purchase(activity, plan)
+        } catch (_: Throwable) { false }
+        if (!launched) return false
+        return try {
+            val snapshot = verifier.refresh(activity)
+            val verified = snapshot.isProVerified()
+            syncVerifiedEntitlement(verified, snapshot.tier)
+            verified
+        } catch (_: Throwable) { false }
+    }
+
+    suspend fun refreshVerifiedEntitlement(
+        verifier: com.tapconvert.core.billing.EntitlementVerifier
+    ): Boolean {
+        return try {
+            val snapshot = verifier.refresh(null)
+            val verified = snapshot.isProVerified()
+            syncVerifiedEntitlement(verified, snapshot.tier)
+            verified
+        } catch (_: Throwable) {
+            syncVerifiedEntitlement(false, com.tapconvert.core.ads.SubscriptionTier.FREE)
+            false
+        }
     }
 }

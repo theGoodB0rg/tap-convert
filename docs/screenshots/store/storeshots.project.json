@@ -3,10 +3,18 @@
   "paletteId": "lagoon",
   "locales": [
     "en",
-    "fr"
+    "fr",
+    "es",
+    "pt",
+    "hi",
+    "id",
+    "tr",
+    "vi",
+    "ar",
+    "zh"
   ],
   "locale": "en",
-  "surface": "play-phone",
+  "surface": "play-banner",
   "orientation": "portrait",
   "productIcon": "/app-icon.png",
   "scenesBySurface": {
@@ -18,13 +26,29 @@
         "composition": "beacon",
         "label": {
           "en": "TAPCONVERT",
-          "fr": "TAPCONVERT"
+          "fr": "TAPCONVERT",
+          "es": "TAPCONVERT",
+          "pt": "TAPCONVERT",
+          "hi": "TAPCONVERT",
+          "id": "TAPCONVERT",
+          "tr": "TAPCONVERT",
+          "vi": "TAPCONVERT",
+          "ar": "TAPCONVERT",
+          "zh": "TAPCONVERT"
         },
         "headline": {
           "en": "Too big to send?\nFixed.",
-          "fr": "Trop lourd à envoyer ?\nRéglé."
+          "fr": "Trop lourd à envoyer ?\nRéglé.",
+          "es": "¿Muy pesado?\nListo.",
+          "pt": "Pesado demais?\nPronto.",
+          "hi": "बहुत बड़ा?\nहो गया।",
+          "id": "Kebesaran?\nBeres.",
+          "tr": "Çok mu büyük?\nTamam.",
+          "vi": "Nặng quá?\nXong.",
+          "ar": "كبير؟\nتم.",
+          "zh": "太大？\n搞定。"
         },
-        "capture": "/captures/google/play-phone/en/x-hero.png",
+        "capture": "/captures/google/play-phone/en/t-hero.png",
         "boxes": {
           "screen": {
             "x": 184,
@@ -39,13 +63,29 @@
         "composition": "plinth",
         "label": {
           "en": "SHARE SHEET",
-          "fr": "MENU DE PARTAGE"
+          "fr": "MENU DE PARTAGE",
+          "es": "COMPARTIR",
+          "pt": "COMPARTILHAR",
+          "hi": "शेयर",
+          "id": "BAGIKAN",
+          "tr": "PAYLAŞ",
+          "vi": "CHIA SẺ",
+          "ar": "مشاركة",
+          "zh": "分享"
         },
         "headline": {
           "en": "Don't even open\nthe app.",
-          "fr": "Sans même ouvrir\nl'appli."
+          "fr": "Sans même ouvrir\nl'appli.",
+          "es": "Ni abras\nla app.",
+          "pt": "Nem abra\no app.",
+          "hi": "ऐप खोलो\nही मत।",
+          "id": "Tanpa buka\naplikasi.",
+          "tr": "Uygulamayı\naçma.",
+          "vi": "Khỏi mở\napp.",
+          "ar": "دون فتح\nالتطبيق.",
+          "zh": "不用打开\n应用。"
         },
-        "capture": "/captures/google/play-phone/en/x-share.png",
+        "capture": "/captures/google/play-phone/en/t-share.png",
         "boxes": {
           "screen": {
             "x": 179,
@@ -60,11 +100,27 @@
         "composition": "plinth",
         "label": {
           "en": "1-TAP PRESET",
-          "fr": "PRÉRÉGLAGE EXPRESS"
+          "fr": "PRÉRÉGLAGE EXPRESS",
+          "es": "PREAJUSTE",
+          "pt": "PREAJUSTE",
+          "hi": "प्रीसेट",
+          "id": "PRASETEL",
+          "tr": "HAZIR AYAR",
+          "vi": "CÀI SẴN",
+          "ar": "إعداد",
+          "zh": "预设"
         },
         "headline": {
           "en": "Made for\nWhatsApp.",
-          "fr": "Pensé pour\nWhatsApp."
+          "fr": "Pensé pour\nWhatsApp.",
+          "es": "Hecho para\nWhatsApp.",
+          "pt": "Feito para\nWhatsApp.",
+          "hi": "WhatsApp\nके लिए।",
+          "id": "Buat\nWhatsApp.",
+          "tr": "WhatsApp\niçin.",
+          "vi": "Cho\nWhatsApp.",
+          "ar": "لواتساب.",
+          "zh": "为WhatsApp\n而生。"
         },
         "capture": "/captures/google/play-phone/en/w-presets.png",
         "boxes": {
@@ -81,13 +137,29 @@
         "composition": "beacon",
         "label": {
           "en": "AUDIO EXTRACT",
-          "fr": "EXTRACTION AUDIO"
+          "fr": "EXTRACTION AUDIO",
+          "es": "AUDIO",
+          "pt": "ÁUDIO",
+          "hi": "ऑडियो",
+          "id": "AUDIO",
+          "tr": "SES",
+          "vi": "ÂM THANH",
+          "ar": "صوت",
+          "zh": "音频"
         },
         "headline": {
           "en": "Music without\nthe video.",
-          "fr": "La musique\nsans la vidéo."
+          "fr": "La musique\nsans la vidéo.",
+          "es": "Música sin\nvideo.",
+          "pt": "Música sem\nvídeo.",
+          "hi": "बिना वीडियो\nसंगीत।",
+          "id": "Musik tanpa\nvideo.",
+          "tr": "Videosuz\nmüzik.",
+          "vi": "Nhạc không\nvideo.",
+          "ar": "موسيقى دون\nفيديو.",
+          "zh": "只要\n音乐。"
         },
-        "capture": "/captures/google/play-phone/en/x-mp3.png",
+        "capture": "/captures/google/play-phone/en/t-mp3.png",
         "boxes": {
           "screen": {
             "x": 184,
@@ -102,11 +174,27 @@
         "composition": "manifesto",
         "label": {
           "en": "DOCUMENTS",
-          "fr": "DOCUMENTS"
+          "fr": "DOCUMENTS",
+          "es": "DOCUMENTOS",
+          "pt": "DOCUMENTOS",
+          "hi": "दस्तावेज़",
+          "id": "DOKUMEN",
+          "tr": "BELGELER",
+          "vi": "TÀI LIỆU",
+          "ar": "مستندات",
+          "zh": "文档"
         },
         "headline": {
           "en": "Photos become\nPDFs.",
-          "fr": "Vos photos deviennent\ndes PDF."
+          "fr": "Vos photos deviennent\ndes PDF.",
+          "es": "Fotos a\nPDF.",
+          "pt": "Fotos viram\nPDF.",
+          "hi": "फोटो से\nPDF।",
+          "id": "Foto jadi\nPDF.",
+          "tr": "Fotoğraftan\nPDF.",
+          "vi": "Ảnh thành\nPDF.",
+          "ar": "صور إلى\nPDF.",
+          "zh": "照片变\nPDF。"
         },
         "capture": ""
       },
@@ -115,13 +203,29 @@
         "composition": "beacon",
         "label": {
           "en": "OFFLINE FIRST",
-          "fr": "100 % HORS-LIGNE"
+          "fr": "100 % HORS-LIGNE",
+          "es": "SIN INTERNET",
+          "pt": "OFFLINE",
+          "hi": "ऑफ़लाइन",
+          "id": "OFFLINE",
+          "tr": "ÇEVRİMDIŞI",
+          "vi": "NGOẠI TUYẾN",
+          "ar": "دون إنترنت",
+          "zh": "离线"
         },
         "headline": {
           "en": "No internet?\nNo problem.",
-          "fr": "Sans internet ?\nAucun problème."
+          "fr": "Sans internet ?\nAucun problème.",
+          "es": "¿Sin internet?\nDa igual.",
+          "pt": "Sem internet?\nTudo bem.",
+          "hi": "इंटरनेट नहीं?\nठीक है।",
+          "id": "Tanpa internet?\nAman.",
+          "tr": "İnternet yok?\nİyi.",
+          "vi": "Không mạng?\nỔn.",
+          "ar": "لا إنترنت؟\nعادي.",
+          "zh": "没网？\n没事。"
         },
-        "capture": "/captures/google/play-phone/en/x-offline.png",
+        "capture": "/captures/google/play-phone/en/t-offline.png",
         "boxes": {
           "screen": {
             "x": 184,
@@ -141,7 +245,15 @@
         "label": {},
         "headline": {
           "en": "Shrink videos & photos\nto shareable size.",
-          "fr": "Réduisez vos vidéos et photos\npour les partager."
+          "fr": "Réduisez vos vidéos et photos\npour les partager.",
+          "es": "Achica videos y fotos\npara compartir.",
+          "pt": "Diminua vídeos e fotos\npara compartilhar.",
+          "hi": "वीडियो-फोटो छोटे करके\nभेजें।",
+          "id": "Kecilkan video & foto\nuntuk dibagikan.",
+          "tr": "Videoları küçültüp\npaylaşın.",
+          "vi": "Thu nhỏ video & ảnh\nđể chia sẻ.",
+          "ar": "صغّر الفيديو والصور\nوشاركها.",
+          "zh": "压缩视频照片，\n轻松分享。"
         },
         "capture": "/captures/google/play-phone/en/raw_dashboard_presets.png",
         "dark": true
