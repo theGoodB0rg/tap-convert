@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Entitlement and billing state must never be backed up/restored (pref-injection defense).
+         DataStore lives under files/datastore, hence domain="file". -->
+    <exclude domain="sharedpref" path="tapconvert_entitlement.xml" />
+    <exclude domain="file" path="datastore/tapconvert_entitlement.preferences_pb" />
+    <exclude domain="database" path="tcbilling.db" />
+</full-backup-content>

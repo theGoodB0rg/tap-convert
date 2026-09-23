@@ -1,8 +1,17 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
 }
+
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) f.inputStream().use(::load)
+}
+fun admob(key: String, testDefault: String): String =
+    (localProps.getProperty(key) as String?)?.takeIf { it.isNotBlank() } ?: testDefault
 
 android {
     namespace = "com.tapconvert.app"
@@ -12,22 +21,56 @@ android {
         applicationId = "com.tapconvert.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
+        versionCode = 4
         versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        manifestPlaceholders["admobAppId"] =
+            admob("admob.appId", "ca-app-pub-3940256099942544~3347511713")
+        buildConfigField(
+            "String", "ADMOB_BANNER_ID",
+            "\"${admob("admob.banner", "ca-app-pub-3940256099942544/6300978111")}\""
+        )
+        buildConfigField(
+            "String", "ADMOB_INTERSTITIAL_ID",
+            "\"${admob("admob.interstitial", "ca-app-pub-3940256099942544/1033173712")}\""
+        )
+        buildConfigField(
+            "String", "ADMOB_REWARDED_ID",
+            "\"${admob("admob.rewarded", "ca-app-pub-3940256099942544/5224354917")}\""
+        )
+    }
+
+    signingConfigs {
+        create("release") {
+            val storeFileProp = localProps["signing.storeFile"] as String?
+            val storePasswordProp = localProps["signing.storePassword"] as String?
+            val keyAliasProp = localProps["signing.keyAlias"] as String?
+            val keyPasswordProp = localProps["signing.keyPassword"] as String?
+            if (storeFileProp != null && storePasswordProp != null &&
+                keyAliasProp != null && keyPasswordProp != null
+            ) {
+                storeFile = file(storeFileProp)
+                storePassword = storePasswordProp
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
@@ -39,6 +82,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         resources {
@@ -59,6 +103,7 @@ dependencies {
     implementation(project(":core:analytics"))
     implementation(project(":core:database"))
     implementation(project(":core:ads"))
+    implementation(project(":core:billing"))
     implementation(project(":feature:image-engine"))
     implementation(project(":feature:pdf-engine"))
     implementation(project(":feature:media-engine"))
@@ -77,8 +122,9 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons.extended)
 
-    // Ads
+    // Ads + consent
     implementation(libs.play.services.ads)
+    implementation(libs.ump.user.messaging)
 
     // Media3
     implementation(libs.androidx.media3.common)
