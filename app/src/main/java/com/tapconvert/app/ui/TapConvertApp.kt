@@ -620,6 +620,14 @@ fun TapConvertApp() {
                                                 }
                                                 Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                             }
+                                        },
+                                        onShareClick = { filePath ->
+                                            val chooserIntent = ShareHelper.createShareChooserIntent(context, filePath)
+                                            context.startActivity(chooserIntent)
+                                        },
+                                        onShareAsDocumentClick = { filePath ->
+                                            val chooserIntent = ShareHelper.createShareAsDocumentChooserIntent(context, filePath)
+                                            context.startActivity(chooserIntent)
                                         }
                                     )
                                 }

@@ -40,6 +40,8 @@ fun SettingsScreen(
     onBackClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showDiagnosticsDialog by remember { mutableStateOf(false) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -255,12 +257,27 @@ fun SettingsScreen(
                             subtitle = "Version 1.0.0 • Offline Media Engine",
                             onClick = onAboutUsClick
                         )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                        SettingsNavRow(
+                            icon = Icons.Default.Analytics,
+                            title = "System Diagnostics & Health",
+                            subtitle = "Heap usage, memory pressure, conversion metrics",
+                            onClick = { showDiagnosticsDialog = true }
+                        )
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
         }
+    }
+
+    if (showDiagnosticsDialog) {
+        DiagnosticsDialog(
+            onDismissRequest = { showDiagnosticsDialog = false }
+        )
     }
 }
 

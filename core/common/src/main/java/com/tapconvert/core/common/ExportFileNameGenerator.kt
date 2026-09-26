@@ -11,6 +11,10 @@ object ExportFileNameGenerator {
     private const val DEFAULT_FALLBACK_NAME = "File"
     private const val MAX_BASE_NAME_LENGTH = 30
 
+    // Matches timestamp + hash staging token prefix produced during media staging
+    // e.g. "1787583442306_4059ce_queen-amina-story.mp4" or "1790153858907_b4c4_video.mp4"
+    private val STAGING_PREFIX_REGEX = Regex("""^\d{10,}_[0-9a-fA-F]{4,12}_""")
+
     /**
      * Generates a standardized, branded export filename conforming to:
      * TapConvert_[SanitizedOriginalName]_[Timestamp].[extension]
@@ -39,7 +43,7 @@ object ExportFileNameGenerator {
     }
 
     /**
-     * Extracts basename without extension, strips path separators,
+     * Extracts basename without extension, strips path separators and staging prefixes,
      * sanitizes non-alphanumeric chars to underscore, and clamps length.
      */
     fun sanitizeBaseName(rawName: String?, fallbackName: String = DEFAULT_FALLBACK_NAME): String {
@@ -49,11 +53,13 @@ object ExportFileNameGenerator {
 
         // Strip path directory components if full path was passed
         val fileNameOnly = File(rawName.trim()).name
+        // Strip intake staging prefixes (timestamp + hash)
+        val cleanName = STAGING_PREFIX_REGEX.replace(fileNameOnly, "")
         // Strip extension if present
-        val withoutExt = if (fileNameOnly.contains(".")) {
-            fileNameOnly.substringBeforeLast(".")
+        val withoutExt = if (cleanName.contains(".")) {
+            cleanName.substringBeforeLast(".")
         } else {
-            fileNameOnly
+            cleanName
         }
 
         // Replace illegal/special chars with underscores (allow letters, digits, dashes, and underscores)

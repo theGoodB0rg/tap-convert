@@ -128,6 +128,27 @@ class BitrateCalculatorTest {
     }
 
     @Test
+    fun `calculateTargetBitrate with large 76_9MB video and 16MB WhatsApp preset strictly respects 16MB ceiling`() {
+        val source76_9Mb = 80_635_500L // 76.9 MB in bytes
+        val duration60s = 60.0
+        val target16Mb = TargetSize.fromMegabytes(16)
+
+        // Even if quality is default Medium (65%), output budget and bitrate MUST fit in 16MB, not 50.8MB
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = target16Mb,
+            durationSeconds = duration60s,
+            sourceSizeBytes = source76_9Mb,
+            sourceHeight = 1080,
+            quality = ConversionQuality.Medium
+        )
+
+        assertThat(spec.effectiveTargetBytes).isAtMost(target16Mb.bytes)
+        assertThat(spec.estimatedTotalSizeBytes).isAtMost(target16Mb.bytes)
+        // Bitrate should be budgeted for 16MB (~1.8-2.0 Mbps), not for 50MB (~6 Mbps)
+        assertThat(spec.videoBitrateBps).isLessThan(2_500_000)
+    }
+
+    @Test
     fun `calculateTargetBitrate monotonicity test over entire quality spectrum`() {
         val source30Mb = 30 * 1024 * 1024L
         val duration30s = 30.0

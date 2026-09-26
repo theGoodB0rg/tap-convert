@@ -98,4 +98,28 @@ class ExportFileNameGeneratorTest {
 
         assertThat(fileName).isEqualTo("TapConvert_presentation_final_$expectedTimestamp.pdf")
     }
+
+    @Test
+    fun `generate strips intake staging timestamp and hash prefix from staged filenames`() {
+        val stagedName = "1787583442306_4059ce_queen-amina-story.mp4"
+        val fileName = ExportFileNameGenerator.generate(
+            originalName = stagedName,
+            extension = "mp4",
+            timestampMs = fixedTimestampMs
+        )
+
+        assertThat(fileName).isEqualTo("TapConvert_queen-amina-story_$expectedTimestamp.mp4")
+    }
+
+    @Test
+    fun `generate strips share-sheet 4-char hash staging prefix`() {
+        val stagedName = "1790153858907_b4c4_queen-mor.mp4"
+        val fileName = ExportFileNameGenerator.generate(
+            originalName = stagedName,
+            extension = "mp4",
+            timestampMs = fixedTimestampMs
+        )
+
+        assertThat(fileName).isEqualTo("TapConvert_queen-mor_$expectedTimestamp.mp4")
+    }
 }

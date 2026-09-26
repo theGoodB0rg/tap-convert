@@ -30,6 +30,7 @@ import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.MediaCategory
 import com.tapconvert.core.model.MimeType
 import com.tapconvert.core.model.Preset
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -490,7 +491,7 @@ private fun SuccessContent(
                             color = SavingsGreen
                         )
                         Text(
-                            text = "${formatSize(state.result.originalSizeBytes)} ➔ ${formatSize(state.result.outputSizeBytes)} (${state.record.savingsPercentage}% saved)",
+                            text = "${formatSize(state.result.originalSizeBytes)} ➔ ${formatSize(state.result.outputSizeBytes)} (${state.record.savingsPercentage.roundToInt()}% saved)",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold
                         )

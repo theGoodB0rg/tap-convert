@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,11 +30,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tapconvert.app.ui.preview.*
 import com.tapconvert.app.ui.theme.PrimaryTeal
 import com.tapconvert.app.ui.theme.SavingsGreen
 import com.tapconvert.core.database.entity.ConversionRecordEntity
 import com.tapconvert.core.model.ConversionResult
 import com.tapconvert.core.model.ConversionType
+import com.tapconvert.core.model.MediaCategory
+import com.tapconvert.core.model.MimeType
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -54,10 +59,13 @@ fun ResultScreen(
     modifier: Modifier = Modifier
 ) {
     var isFavorited by remember { mutableStateOf(record.isFavorited) }
+    var activePreviewItem by remember { mutableStateOf<PreviewMediaItem?>(null) }
     val isBatch = result.outputUris.size > 1
 
     val inputPath = record.inputUris.firstOrNull()?.removePrefix("file://")
     val outputPath = result.outputUris.firstOrNull()?.removePrefix("file://")
+    val singleOutputFile = outputPath?.let { File(it) }
+    val singleOutputMime = singleOutputFile?.let { MimeType.fromFileName(it.name) }
 
     var inputImageBitmap by remember(inputPath) {
         mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
@@ -67,7 +75,7 @@ fun ResultScreen(
     }
 
     LaunchedEffect(inputPath, outputPath) {
-        if (!isBatch) {
+        if (!isBatch && singleOutputMime?.isImage == true) {
             if (inputPath != null) {
                 val f = File(inputPath)
                 if (f.exists() && f.length() > 0) {
@@ -122,21 +130,52 @@ fun ResultScreen(
                     isBatch = isBatch
                 )
 
-                // 2. Visual Fidelity Inspection Card (Rendered ONLY for images with valid before/after bitmaps)
-                if (!isBatch && inputImageBitmap != null && outputImageBitmap != null) {
-                    ResultVisualDiffCard(
-                        inputBitmap = inputImageBitmap!!,
-                        outputBitmap = outputImageBitmap!!,
-                        originalSize = result.originalSizeBytes,
-                        outputSize = result.outputSizeBytes
-                    )
+                // 2. High-Performance In-App Media Previews for Single Output
+                if (!isBatch && singleOutputFile != null && singleOutputFile.exists()) {
+                    when {
+                        singleOutputMime?.isVideo == true -> {
+                            ResultVideoPreviewCard(
+                                videoFile = singleOutputFile,
+                                onFullscreenClick = {
+                                    activePreviewItem = PreviewMediaItem.fromResult(result, record)
+                                }
+                            )
+                        }
+                        singleOutputMime?.isPdf == true -> {
+                            ResultPdfPreviewCard(
+                                pdfFile = singleOutputFile,
+                                onFullscreenClick = {
+                                    activePreviewItem = PreviewMediaItem.fromResult(result, record)
+                                }
+                            )
+                        }
+                        singleOutputMime?.isAudio == true -> {
+                            AudioPreviewPlayer(
+                                audioFile = singleOutputFile
+                            )
+                        }
+                        singleOutputMime?.isImage == true && inputImageBitmap != null && outputImageBitmap != null -> {
+                            ResultVisualDiffCard(
+                                inputBitmap = inputImageBitmap!!,
+                                outputBitmap = outputImageBitmap!!,
+                                originalSize = result.originalSizeBytes,
+                                outputSize = result.outputSizeBytes,
+                                onExpandClick = {
+                                    activePreviewItem = PreviewMediaItem.fromResult(result, record)
+                                }
+                            )
+                        }
+                    }
                 }
 
-                // 3. Batch Breakdown (Only for multi-file batches)
+                // 3. Batch Breakdown with In-App Preview Actions (Only for multi-file batches)
                 if (isBatch) {
                     ResultBatchListCard(
                         outputUris = result.outputUris,
-                        onShareClick = onShareClick
+                        onShareClick = onShareClick,
+                        onPreviewClick = { uri ->
+                            activePreviewItem = PreviewMediaItem.fromResult(result, record, uri)
+                        }
                     )
                 }
 
@@ -186,6 +225,16 @@ fun ResultScreen(
                 )
             }
         }
+    }
+
+    // In-App Media Fullscreen Preview Modal
+    activePreviewItem?.let { previewItem ->
+        InAppMediaPreviewDialog(
+            item = previewItem,
+            onDismiss = { activePreviewItem = null },
+            onShareClick = { onShareClick(it) },
+            onShareAsDocumentClick = { onShareAsDocumentClick(it) }
+        )
     }
 
     // 5-Second Review Bottom Sheet
@@ -345,11 +394,107 @@ private fun ResultHeroCard(
 }
 
 @Composable
+private fun ResultVideoPreviewCard(
+    videoFile: File,
+    onFullscreenClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Video Preview",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onFullscreenClick, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "Fullscreen",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            VideoPreviewPlayer(
+                videoFile = videoFile,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                autoPlay = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResultPdfPreviewCard(
+    pdfFile: File,
+    onFullscreenClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        ),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Document Preview",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onFullscreenClick, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = Icons.Default.Fullscreen,
+                        contentDescription = "Fullscreen",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            PdfPreviewViewer(
+                pdfFile = pdfFile,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(230.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun ResultVisualDiffCard(
     inputBitmap: androidx.compose.ui.graphics.ImageBitmap,
     outputBitmap: androidx.compose.ui.graphics.ImageBitmap,
     originalSize: Long,
     outputSize: Long,
+    onExpandClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -373,12 +518,25 @@ private fun ResultVisualDiffCard(
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold
                 )
-                Text(
-                    text = "100% Offline",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = SavingsGreen,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "100% Offline",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SavingsGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(onClick = onExpandClick, modifier = Modifier.size(26.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Fullscreen,
+                            contentDescription = "Expand Fullscreen",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
             }
 
             Row(
@@ -453,6 +611,7 @@ private fun ResultVisualDiffCard(
 private fun ResultBatchListCard(
     outputUris: List<String>,
     onShareClick: (String) -> Unit,
+    onPreviewClick: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -515,6 +674,18 @@ private fun ResultBatchListCard(
                                 text = formatBytes(fileLen),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        IconButton(
+                            onClick = { onPreviewClick(path) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Visibility,
+                                contentDescription = "Preview item",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 

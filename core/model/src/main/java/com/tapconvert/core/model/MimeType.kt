@@ -6,6 +6,12 @@ sealed interface MimeType {
     val category: MediaCategory
     val displayName: String
 
+    val mimeString: String get() = rawMimeType
+    val isVideo: Boolean get() = this is Video || this.category == MediaCategory.VIDEO
+    val isImage: Boolean get() = this is Image || this.category == MediaCategory.IMAGE
+    val isAudio: Boolean get() = this is Audio || this.category == MediaCategory.AUDIO
+    val isPdf: Boolean get() = this == Document.PDF || (this.category == MediaCategory.DOCUMENT && this.primaryExtension == "pdf")
+
     // Image Formats
     sealed class Image(
         override val rawMimeType: String,
@@ -153,3 +159,5 @@ sealed interface MimeType {
         }
     }
 }
+
+
