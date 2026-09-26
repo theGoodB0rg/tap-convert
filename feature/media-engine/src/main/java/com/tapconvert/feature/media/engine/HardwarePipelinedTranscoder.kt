@@ -1,7 +1,6 @@
 package com.tapconvert.feature.media.engine
 
 import android.media.MediaCodec
-import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
@@ -19,12 +18,19 @@ import java.nio.ByteBuffer
 import kotlin.math.roundToInt
 
 /**
- * Robust, platform-native video transcoder using Android's MediaCodec, MediaExtractor,
- * and MediaMuxer APIs. Operates with hardware Surface-to-Surface rendering without
- * depending on OpenGL ES external shader pipelines, ensuring 100% reliability across
- * emulators, virtual machines, and diverse GPU hardware.
+ * High-performance hardware pipelined video transcoder.
+ *
+ * Utilizes:
+ * 1. Unthrottled hardware codec operating rates and real-time execution priority.
+ * 2. Surface-to-Surface hardware rendering without intermediate CPU copies.
+ * 3. Adaptive non-blocking/micro-timeout pipeline scheduling to eliminate idle wait states.
+ * 4. 16-pixel macroblock boundary alignment for optimal GPU/VPU DMA transfers.
+ * 5. Hardware VBR encoding with standardized I-frame intervals to prevent bitrate overshoot.
+ * 6. Automatic, seamless fallback to [fallbackTranscoder] if device hardware blocks Surface creation.
  */
-class NativeVideoTranscoder : VideoTranscoder {
+class HardwarePipelinedTranscoder(
+    private val fallbackTranscoder: VideoTranscoder = NativeVideoTranscoder()
+) : VideoTranscoder {
 
     @Volatile
     private var isCancelled = false
@@ -40,8 +46,44 @@ class NativeVideoTranscoder : VideoTranscoder {
             return@flow
         }
 
+        var hardwareSuccess = false
+        var hardwareFailed = false
+
+        try {
+            runPipeline(sourceFile, outputFile, encodingSpec).collect { result ->
+                when (result) {
+                    is AppResult.Progress -> emit(result)
+                    is AppResult.Success -> {
+                        hardwareSuccess = true
+                        emit(result)
+                    }
+                    is AppResult.Error -> {
+                        if (result.throwable is ConversionError.Cancelled) {
+                            emit(result)
+                            return@collect
+                        }
+                        hardwareFailed = true
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            hardwareFailed = true
+        }
+
+        if ((hardwareFailed || !hardwareSuccess) && !isCancelled) {
+            fallbackTranscoder.transcode(sourceFile, outputFile, encodingSpec).collect { fallbackResult ->
+                emit(fallbackResult)
+            }
+        }
+    }
+
+    private fun runPipeline(
+        sourceFile: File,
+        outputFile: File,
+        encodingSpec: BitrateCalculator.VideoEncodingSpec
+    ): Flow<AppResult<File>> = flow {
         outputFile.parentFile?.mkdirs()
-        emit(AppResult.Progress(5, "Initializing native hardware codecs..."))
+        emit(AppResult.Progress(5, "Initializing hardware pipeline..."))
 
         val videoExtractor = MediaExtractor()
         val audioExtractor = MediaExtractor()
@@ -71,7 +113,6 @@ class NativeVideoTranscoder : VideoTranscoder {
             }
 
             if (videoTrackIndex == -1 || sourceVideoFormat == null) {
-                // If not a valid video track, fallback to copy or emit error
                 emit(AppResult.Error(ConversionError.UnsupportedFormat("No valid video track found in ${sourceFile.name}")))
                 return@flow
             }
@@ -95,11 +136,12 @@ class NativeVideoTranscoder : VideoTranscoder {
                 sourceVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
             } catch (_: Throwable) { 30 }.coerceIn(15, 60)
 
-            // Target dimensions computed from encodingSpec and aligned to macroblock boundaries
-            val rawW = if (encodingSpec.targetWidth > 0) encodingSpec.targetWidth else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).first
-            val rawH = if (encodingSpec.targetHeight > 0) encodingSpec.targetHeight else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).second
-            val targetWidth = TranscoderConfigurator.alignToMacroblock(rawW)
-            val targetHeight = TranscoderConfigurator.alignToMacroblock(rawH)
+            // Calculate macroblock-aligned target dimensions
+            val rawTargetW = if (encodingSpec.targetWidth > 0) encodingSpec.targetWidth else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).first
+            val rawTargetH = if (encodingSpec.targetHeight > 0) encodingSpec.targetHeight else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).second
+
+            val targetWidth = TranscoderConfigurator.alignToMacroblock(rawTargetW)
+            val targetHeight = TranscoderConfigurator.alignToMacroblock(rawTargetH)
 
             val outputVideoMime = MediaFormat.MIMETYPE_VIDEO_AVC
             val targetFormat = TranscoderConfigurator.createEncoderFormat(
@@ -142,10 +184,13 @@ class NativeVideoTranscoder : VideoTranscoder {
             val bufferInfo = MediaCodec.BufferInfo()
             val audioBuffer = ByteBuffer.allocate(256 * 1024)
             val audioBufferInfo = MediaCodec.BufferInfo()
+
+            // Micro-timeouts: 0us when busy, 250us when idle waiting
             val kActiveTimeoutUs = 0L
             val kIdleTimeoutUs = 250L
 
             var lastReportedProgress = 5
+            var lastProgressTimeMs = 0L
 
             while (!encoderDone && !isCancelled && currentCoroutineContext().isActive) {
                 var hadActivity = false
@@ -170,7 +215,7 @@ class NativeVideoTranscoder : VideoTranscoder {
                     }
                 }
 
-                // 2. Dequeue decoded frames and render onto encoder's input surface with accurate presentation timestamp (in nanoseconds)
+                // 2. Dequeue decoded frames and render onto encoder's input surface
                 var decoderOutputAvailable = true
                 while (decoderOutputAvailable && !isCancelled) {
                     val decoderStatus = decoder.dequeueOutputBuffer(bufferInfo, kActiveTimeoutUs)
@@ -178,7 +223,6 @@ class NativeVideoTranscoder : VideoTranscoder {
                         decoderStatus >= 0 -> {
                             hadActivity = true
                             if (bufferInfo.size > 0) {
-                                // Must pass nanoseconds timestamp to encoder input surface to prevent wall-clock fallback distortion
                                 decoder.releaseOutputBuffer(decoderStatus, bufferInfo.presentationTimeUs * 1000L)
                             } else {
                                 decoder.releaseOutputBuffer(decoderStatus, false)
@@ -254,10 +298,13 @@ class NativeVideoTranscoder : VideoTranscoder {
                                         }
                                     }
 
+                                    // Throttled progress reporting
+                                    val now = System.currentTimeMillis()
                                     val progressPct = ((bufferInfo.presentationTimeUs.toFloat() / durationUs.toFloat()) * 85f).toInt() + 10
                                     val clamped = progressPct.coerceIn(10, 95)
-                                    if (clamped > lastReportedProgress) {
+                                    if (clamped > lastReportedProgress && (clamped - lastReportedProgress >= 2 || now - lastProgressTimeMs >= 150)) {
                                         lastReportedProgress = clamped
+                                        lastProgressTimeMs = now
                                         emit(AppResult.Progress(clamped, "Transcoding video ($clamped%)..."))
                                     }
                                 }
@@ -315,7 +362,7 @@ class NativeVideoTranscoder : VideoTranscoder {
             if (e is CancellationException) {
                 emit(AppResult.Error(ConversionError.Cancelled))
             } else {
-                emit(AppResult.Error(ConversionError.IOError("Native transcoding failed: ${e.message}", e)))
+                emit(AppResult.Error(ConversionError.IOError("Hardware pipelined transcoding failed: ${e.message}", e)))
             }
         } finally {
             try { videoExtractor.release() } catch (_: Throwable) {}
@@ -337,6 +384,7 @@ class NativeVideoTranscoder : VideoTranscoder {
 
     override fun cancel() {
         isCancelled = true
+        fallbackTranscoder.cancel()
     }
 
     private fun computeTargetDimensions(

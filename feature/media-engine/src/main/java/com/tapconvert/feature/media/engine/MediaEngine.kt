@@ -382,10 +382,13 @@ class DefaultMediaEngine(
             val appContext = context.applicationContext
             return DefaultMediaEngine(
                 analyticsTracker = analyticsTracker,
-                transcoder = Media3VideoTranscoder(
-                    context = appContext,
-                    mainDispatcher = Dispatchers.Main.immediate,
-                    looper = appContext.mainLooper
+                transcoder = HardwarePipelinedTranscoder(
+                    fallbackTranscoder = Media3VideoTranscoder(
+                        context = appContext,
+                        mainDispatcher = Dispatchers.Main.immediate,
+                        looper = appContext.mainLooper,
+                        fallbackTranscoder = NativeVideoTranscoder()
+                    )
                 )
             )
         }

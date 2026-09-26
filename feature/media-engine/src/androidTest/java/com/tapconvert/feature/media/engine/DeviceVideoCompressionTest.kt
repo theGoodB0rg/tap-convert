@@ -145,4 +145,87 @@ class DeviceVideoCompressionTest {
             println("=== testMediaEngineCompressVideoWithQualitySlider SUCCESS, output size: ${finalFile.length()} bytes ===")
         }
     }
+
+    @Test
+    fun testHardwarePipelinedTranscoderDirectly() = runBlocking {
+        println("=== testHardwarePipelinedTranscoderDirectly START ===")
+        assertThat(testVideo1080p.exists()).isTrue()
+        val outputFile = File(outputDir, "pipelined_output_1080p.mp4")
+        if (outputFile.exists()) outputFile.delete()
+
+        val transcoder = HardwarePipelinedTranscoder()
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 3.0,
+            sourceSizeBytes = testVideo1080p.length(),
+            sourceHeight = 1080
+        )
+
+        val startTime = System.currentTimeMillis()
+        transcoder.transcode(testVideo1080p, outputFile, spec).test(timeout = 30.seconds) {
+            var completed = false
+            while (!completed) {
+                val item = awaitItem()
+                when (item) {
+                    is AppResult.Progress -> println("Pipelined Progress: ${item.percentage}%")
+                    is AppResult.Success -> {
+                        val durationMs = System.currentTimeMillis() - startTime
+                        println("Pipelined transcode completed in ${durationMs}ms!")
+                        assertThat(item.data.exists()).isTrue()
+                        assertThat(item.data.length()).isGreaterThan(0L)
+                        completed = true
+                    }
+                    is AppResult.Error -> throw AssertionError("Pipelined transcode failed: ${item.message}", item.throwable)
+                }
+            }
+            awaitComplete()
+            println("=== testHardwarePipelinedTranscoderDirectly SUCCESS ===")
+        }
+    }
+
+    @Test
+    fun testStressLongVideoCompression() = runBlocking {
+        val longVideo = File("/sdcard/Download/nigeria-60s.mp4")
+        if (!longVideo.exists()) {
+            println("Skipping stress test: /sdcard/Download/nigeria-60s.mp4 not found on device")
+            return@runBlocking
+        }
+
+        println("=== testStressLongVideoCompression START (${longVideo.length() / 1024 / 1024}MB) ===")
+        val mediaEngine = DefaultMediaEngine.create(context)
+        val request = ConversionRequest(
+            sourceUris = listOf("file://${longVideo.absolutePath}"),
+            conversionType = ConversionType.VIDEO_COMPRESS,
+            targetMimeType = MimeType.Video.MP4,
+            preset = Preset.WhatsAppVideo16MB,
+            targetSize = TargetSize.fromMegabytes(16)
+        )
+
+        val startTime = System.currentTimeMillis()
+        mediaEngine.compressVideo(request, outputDir).test(timeout = 120.seconds) {
+            var finalFile: File? = null
+            while (true) {
+                val item = awaitItem()
+                when (item) {
+                    is AppResult.Progress -> println("Stress Progress: ${item.percentage}% - ${item.currentStep}")
+                    is AppResult.Success -> {
+                        val outputs = item.data.outputUris
+                        assertThat(outputs).isNotEmpty()
+                        finalFile = File(outputs.first())
+                        break
+                    }
+                    is AppResult.Error -> throw AssertionError("Stress compress failed: ${item.message}", item.throwable)
+                }
+            }
+            awaitComplete()
+
+            val durationMs = System.currentTimeMillis() - startTime
+            assertThat(finalFile).isNotNull()
+            assertThat(finalFile!!.exists()).isTrue()
+            assertThat(finalFile.length()).isGreaterThan(0L)
+            assertThat(finalFile.length()).isAtMost(TargetSize.fromMegabytes(16).bytes)
+            println("=== testStressLongVideoCompression SUCCESS in ${durationMs}ms, output size: ${finalFile.length()} bytes ===")
+        }
+    }
 }
+
