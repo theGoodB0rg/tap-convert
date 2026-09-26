@@ -39,9 +39,10 @@ person. A completed task that doesn't make that person tap is a failed task.
 ## 3. PHASES + outcome-based Definitions of Done
 
 - **A — Website live.** DONE only when
-  `https://thegoodb0rg.github.io/tap-convert/` (from `docs/index.html` —
-  note: currently authored at `docs/site/index.html`, **must relocate** —
-  on `master`, `/docs` Pages source) returns 200 over HTTPS *and* passes
+  `https://thegoodb0rg.github.io/tap-convert/` (from `docs/site/index.html`,
+  canonical source — Page deployed from `docs/site` by
+  `.github/workflows/pages.yml`, docs/store + docs/screenshots stay sibling
+  dirs, never merged into the site) returns 200 over HTTPS *and* passes
   W3C HTML + Rich Results (FAQPage) + mobile check + one human view.
   Purpose: the page Ask Play grounds on — claims mirror the listing 1:1.
 - **B — Closed testing live.** DONE only when a tester **outside the
@@ -75,6 +76,9 @@ Group `tapconvert-testers`; scope = Alpha closed testing.
   session. Keystore `C:\Users\HP\keystores\tapconvert-upload.jks` — outside
   repo, never commit. Secrets in gitignored `local.properties`.
   `dist/` gitignored (vc4 AAB lives there, untracked).
+- Site source = `docs/site/` only (index + privacy), deployed via Pages
+  workflow; store assets + screenshots live in `docs/store` +
+  `docs/screenshots` as siblings, never copied into the site dir.
 - Products (frozen, not created): `tapconvert_pro_monthly` $0.99/mo,
   `tapconvert_pro_annual` $9.99/yr, `tapconvert_pro_lifetime` $19.99.
 - Console: payments profile ✓; Alpha holds vc3 draft; dev
@@ -91,11 +95,14 @@ Group `tapconvert-testers`; scope = Alpha closed testing.
   `sheet.py <deckdir> <label>`, `fit.py`, `stitch.py`, `frame.py`).
 - Copy guardrails: §2 Truth + `docs/store/ASO.md`.
 
-## 6. KNOWN DEBT (documented, copy-guarded, fixable when veto lifts)
+## 6. RESOLVED DEBT (verified on emulator & unit test suite)
 
-Share-sheet path ignores 16 MB calibration (76.9→50.8 observed);
-hash filenames on result screens; share-sheet `%` decimals. AEO follow-ups
-post-launch: listing experiments, Shorts cut (seed: temp `promo_moremi.mp4`),
+- [x] **Share-sheet path 16 MB calibration**: Fixed in `ShareTargetViewModel.kt` (`loadFromPayload` now calculates calibrated quality on intake) & `BitrateCalculator.kt` (`effectiveTargetBytes` strictly enforces `targetSize.bytes` as hard ceiling for target-size presets). Verified with unit tests & live emulator run of 76.9MB `queen-amina-story.mp4`.
+- [x] **Hash filenames on result screens**: Fixed in `ExportFileNameGenerator.kt` (`sanitizeBaseName` strips `^\d{10,}_[0-9a-fA-F]{4,12}_` staging prefixes). Verified clean `TapConvert_queen-amina-story_...mp4` output generated on device.
+- [x] **Share-sheet `%` decimals**: Fixed in `ShareTargetBottomSheet.kt` (rounded with `.roundToInt()`, eliminating six-decimal percentages).
+
+### Post-Launch Follow-ups
+AEO follow-ups post-launch: listing experiments, Shorts cut (seed: temp `promo_moremi.mp4`),
 ratings-velocity tuning, production rollout plan.
 
 ## 7. REVIEW PROTOCOL

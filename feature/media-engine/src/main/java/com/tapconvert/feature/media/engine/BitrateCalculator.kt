@@ -41,12 +41,28 @@ object BitrateCalculator {
         val qualityPct = quality.qualityPercent.coerceIn(1, 100)
 
         // Sizing Budget Calculation:
-        // 1. If source size is known, the quality percentage (calibrated preset ratio or manual slider)
-        //    strictly dictates target bytes, ensuring the slider has real authority over output sizing.
-        // 2. If source size is unknown, targetSize is used as the target budget.
+        // 1. If user explicitly dragged the quality slider (ConversionQuality.Custom), their chosen
+        //    percentage has direct authority over the source size budget.
+        // 2. If targetSize is specified (e.g. WhatsApp 16MB preset, Discord 25MB preset),
+        //    the targetSize bytes serves as a strict hard ceiling for presets.
+        //    If source size is known, we scale down if quality < 100%, but never exceed targetSize.
+        // 3. If targetSize is null and source size is known, quality percentage strictly
+        //    dictates the proportional target bytes from source size.
+        // 4. Fallback to 16MB default budget.
         val effectiveTargetBytes: Long = when {
+            quality is ConversionQuality.Custom && sourceSizeBytes > 0L -> {
+                ((sourceSizeBytes * (qualityPct / 100.0)).toLong()).coerceAtLeast(100_000L)
+            }
+            targetSize != null -> {
+                val targetCeiling = targetSize.bytes
+                if (sourceSizeBytes > 0L) {
+                    val scaledSource = (sourceSizeBytes * (qualityPct / 100.0)).toLong()
+                    min(targetCeiling, scaledSource).coerceAtLeast(100_000L)
+                } else {
+                    targetCeiling.coerceAtLeast(100_000L)
+                }
+            }
             sourceSizeBytes > 0L -> ((sourceSizeBytes * (qualityPct / 100.0)).toLong()).coerceAtLeast(100_000L)
-            targetSize != null -> targetSize.bytes.coerceAtLeast(100_000L)
             else -> TargetSize.fromMegabytes(16).bytes
         }
 

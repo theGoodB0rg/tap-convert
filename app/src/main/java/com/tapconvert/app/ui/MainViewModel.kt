@@ -68,6 +68,7 @@ class MainViewModel(
     private val mediaIntakeManager: MediaIntakeManager = DefaultMediaIntakeManager(),
     private val mediaIntakeClassifier: MediaIntakeClassifier = DefaultMediaIntakeClassifier(),
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val observabilityRegistry: com.tapconvert.core.common.diagnostics.AppObservabilityRegistry = com.tapconvert.core.common.diagnostics.AppObservabilityRegistry.instance,
     /**
      * Release must inject a freshly-verified Pro flag (Play query <10min).
      * Null = legacy local-boolean path (tests, previews). Never null in release.
@@ -351,6 +352,8 @@ class MainViewModel(
         // Consume single batch pass token if one was granted
         adManager.consumeBatchToken()
 
+        val traceId = java.util.UUID.randomUUID().toString().take(8)
+        val startTime = observabilityRegistry.onConversionStarted(traceId)
         _uiState.value = ConversionUiState.Processing(ConversionStage.PREPARING, 10, "Initializing conversion...")
 
         activeJob = viewModelScope.launch {
@@ -393,6 +396,15 @@ class MainViewModel(
                         historyRepository.save(record)
                         adManager.recordConversion()
                         lifetimeStatsManager.recordConversion(result.data.originalSizeBytes, result.data.outputSizeBytes)
+                        val duration = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
+                        observabilityRegistry.onConversionFinished(
+                            traceId = traceId,
+                            conversionType = request.conversionType.name,
+                            inputSizeBytes = result.data.originalSizeBytes,
+                            outputSizeBytes = result.data.outputSizeBytes,
+                            durationMs = duration,
+                            isSuccess = true
+                        )
 
                         reviewPromptManager.recordSuccessfulConversion()
                         if (reviewPromptManager.shouldPromptReview()) {
@@ -411,6 +423,16 @@ class MainViewModel(
                         } else {
                             ConversionError.Unknown(result.message, result.throwable)
                         }
+                        val duration = (System.currentTimeMillis() - startTime).coerceAtLeast(1L)
+                        observabilityRegistry.onConversionFinished(
+                            traceId = traceId,
+                            conversionType = request.conversionType.name,
+                            inputSizeBytes = 0L,
+                            outputSizeBytes = 0L,
+                            durationMs = duration,
+                            isSuccess = false,
+                            errorMessage = error.userReadableMessage
+                        )
                         _uiState.value = ConversionUiState.Error(error)
                     }
                 }

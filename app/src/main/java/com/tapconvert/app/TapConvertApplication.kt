@@ -33,5 +33,19 @@ class TapConvertApplication : Application() {
                 MobileAds.initialize(this@TapConvertApplication)
             } catch (_: Throwable) {}
         }
+
+        // Register diagnostic broadcast receiver for automated testing and local debugging in debug builds only
+        if (BuildConfig.DEBUG) {
+            val filter = android.content.IntentFilter().apply {
+                addAction(com.tapconvert.app.diagnostics.DiagnosticBroadcastReceiver.ACTION_SNAPSHOT)
+                addAction(com.tapconvert.app.diagnostics.DiagnosticBroadcastReceiver.ACTION_RESET)
+            }
+            androidx.core.content.ContextCompat.registerReceiver(
+                this,
+                com.tapconvert.app.diagnostics.DiagnosticBroadcastReceiver(),
+                filter,
+                androidx.core.content.ContextCompat.RECEIVER_EXPORTED
+            )
+        }
     }
 }

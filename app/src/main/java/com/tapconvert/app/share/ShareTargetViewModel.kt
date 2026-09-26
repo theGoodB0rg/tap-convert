@@ -81,14 +81,38 @@ class ShareTargetViewModel(
             MediaCategory.AUDIO -> MimeType.Audio.MP3
         }
 
+        val totalSourceSize = payload.sourceUris.sumOf { uri ->
+            try {
+                val f = File(uri.removePrefix("file://"))
+                if (f.exists()) f.length() else 0L
+            } catch (_: Throwable) { 0L }
+        }
+
+        val calibratedQuality = calculateCalibratedQuality(defaultPreset, totalSourceSize)
+
         _uiState.value = ShareTargetUiState.Ready(
             payload = payload,
             suggestedPresets = presets,
             selectedPreset = defaultPreset,
-            customQuality = defaultPreset?.quality ?: ConversionQuality.High,
+            customQuality = calibratedQuality,
             customTargetSize = defaultPreset?.targetSize,
             selectedTargetMimeType = defaultTargetMime
         )
+    }
+
+    private fun calculateCalibratedQuality(preset: Preset?, totalSourceSize: Long): ConversionQuality {
+        val presetTarget = preset?.targetSize
+        return if (presetTarget != null && totalSourceSize > 0L) {
+            val targetBytes = presetTarget.bytes
+            if (totalSourceSize <= targetBytes) {
+                ConversionQuality.Custom(90)
+            } else {
+                val targetRatio = (targetBytes.toDouble() / totalSourceSize.toDouble() * 0.95 * 100.0).toInt()
+                ConversionQuality.Custom(targetRatio.coerceIn(10, 95))
+            }
+        } else {
+            preset?.quality ?: ConversionQuality.High
+        }
     }
 
     fun selectPreset(preset: Preset) {
@@ -100,18 +124,7 @@ class ShareTargetViewModel(
             } catch (_: Throwable) { 0L }
         }
 
-        val presetTarget = preset.targetSize
-        val calibratedQuality = if (presetTarget != null && totalSourceSize > 0L) {
-            val targetBytes = presetTarget.bytes
-            if (totalSourceSize <= targetBytes) {
-                ConversionQuality.Custom(90)
-            } else {
-                val targetRatio = (targetBytes.toDouble() / totalSourceSize.toDouble() * 0.95 * 100.0).toInt()
-                ConversionQuality.Custom(targetRatio.coerceIn(10, 95))
-            }
-        } else {
-            preset.quality
-        }
+        val calibratedQuality = calculateCalibratedQuality(preset, totalSourceSize)
 
         _uiState.value = current.copy(
             selectedPreset = preset,

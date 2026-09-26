@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tapconvert.app.ui.preview.InAppMediaPreviewDialog
+import com.tapconvert.app.ui.preview.PreviewMediaItem
 import com.tapconvert.app.ui.theme.AccentAmber
 import com.tapconvert.app.ui.theme.AccentPurple
 import com.tapconvert.app.ui.theme.AccentSky
@@ -41,9 +44,12 @@ fun HistoryScreen(
     onToggleFavorite: (String, Boolean) -> Unit,
     onDeleteRecord: (String) -> Unit,
     onCleanCacheClick: () -> Unit = {},
+    onShareClick: (String) -> Unit = {},
+    onShareAsDocumentClick: (String) -> Unit = onShareClick,
     modifier: Modifier = Modifier
 ) {
     var selectedCategoryFilter by remember { mutableStateOf("ALL") }
+    var activePreviewItem by remember { mutableStateOf<PreviewMediaItem?>(null) }
 
     val filteredRecords = remember(records, onlyFavoritesFilter, selectedCategoryFilter) {
         records.filter { record ->
@@ -222,12 +228,24 @@ fun HistoryScreen(
                 items(filteredRecords, key = { it.id }) { record ->
                     HistoryItemCard(
                         record = record,
+                        onPreviewClick = {
+                            activePreviewItem = PreviewMediaItem.fromRecord(record)
+                        },
                         onToggleFavorite = { onToggleFavorite(record.id, !record.isFavorited) },
                         onDelete = { onDeleteRecord(record.id) }
                     )
                 }
             }
         }
+    }
+
+    activePreviewItem?.let { item ->
+        InAppMediaPreviewDialog(
+            item = item,
+            onDismiss = { activePreviewItem = null },
+            onShareClick = onShareClick,
+            onShareAsDocumentClick = onShareAsDocumentClick
+        )
     }
 }
 
@@ -254,11 +272,13 @@ private fun StorageLegendItem(color: Color, label: String) {
 @Composable
 fun HistoryItemCard(
     record: ConversionRecordEntity,
+    onPreviewClick: () -> Unit = {},
     onToggleFavorite: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Card(
+        onClick = onPreviewClick,
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant
@@ -287,6 +307,14 @@ fun HistoryItemCard(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(onClick = onPreviewClick) {
+                    Icon(
+                        imageVector = Icons.Default.Visibility,
+                        contentDescription = "Preview",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 IconButton(onClick = onToggleFavorite) {
                     Icon(
                         imageVector = if (record.isFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
