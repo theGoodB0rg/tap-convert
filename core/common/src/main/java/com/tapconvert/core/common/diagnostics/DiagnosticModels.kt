@@ -18,6 +18,12 @@ data class ConversionTraceRecord(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class ObservationEventRecord(
+    val name: String,
+    val params: Map<String, String>,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class SystemHealthSnapshot(
     val availableMemoryMb: Long,
     val totalMemoryMb: Long,
@@ -29,6 +35,7 @@ data class SystemHealthSnapshot(
     val totalConversionsFailed: Long,
     val averageDurationMs: Long,
     val recentTraces: List<ConversionTraceRecord>,
+    val recentEvents: List<ObservationEventRecord> = emptyList(),
     val cacheSizeBytes: Long,
     val hardwareEncoders: List<String>,
     val timestamp: Long = System.currentTimeMillis()

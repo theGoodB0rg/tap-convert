@@ -354,6 +354,10 @@ class MainViewModel(
 
         val traceId = java.util.UUID.randomUUID().toString().take(8)
         val startTime = observabilityRegistry.onConversionStarted(traceId)
+        val inputSizeBytes = request.sourceUris.sumOf { uri ->
+            File(uri.removePrefix("file://")).takeIf { it.exists() }?.length() ?: 0L
+        }
+        var lastReportedPercentage = 10
         _uiState.value = ConversionUiState.Processing(ConversionStage.PREPARING, 10, "Initializing conversion...")
 
         activeJob = viewModelScope.launch {
@@ -381,9 +385,15 @@ class MainViewModel(
             flow.collect { result ->
                 when (result) {
                     is AppResult.Progress -> {
+                        // The UI is a separate contract boundary: fallback engines,
+                        // retries, and future implementations must never move it
+                        // backwards even if their raw progress does.
+                        val monotonicPercentage = result.percentage
+                            .coerceIn(lastReportedPercentage, 100)
+                        lastReportedPercentage = monotonicPercentage
                         _uiState.value = ConversionUiState.Processing(
                             stage = ConversionStage.PROCESSING,
-                            percentage = result.percentage,
+                            percentage = monotonicPercentage,
                             statusMessage = result.currentStep
                         )
                     }
@@ -427,7 +437,7 @@ class MainViewModel(
                         observabilityRegistry.onConversionFinished(
                             traceId = traceId,
                             conversionType = request.conversionType.name,
-                            inputSizeBytes = 0L,
+                            inputSizeBytes = inputSizeBytes,
                             outputSizeBytes = 0L,
                             durationMs = duration,
                             isSuccess = false,

@@ -4,6 +4,9 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.util.Log
+import com.tapconvert.core.analytics.AnalyticsTracker
+import com.tapconvert.core.analytics.NoOpAnalyticsTracker
 import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.model.ConversionError
 import kotlinx.coroutines.CancellationException
@@ -29,7 +32,10 @@ import kotlin.math.roundToInt
  * 6. Automatic, seamless fallback to [fallbackTranscoder] if device hardware blocks Surface creation.
  */
 class HardwarePipelinedTranscoder(
-    private val fallbackTranscoder: VideoTranscoder = NativeVideoTranscoder()
+    private val fallbackTranscoder: VideoTranscoder = NativeVideoTranscoder(),
+    private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker(),
+    private val audioTrackReencoder: AudioTrackReencoder? = null,
+    private val lowBitrateVideoFallback: VideoTranscoder? = null
 ) : VideoTranscoder {
 
     @Volatile
@@ -43,6 +49,118 @@ class HardwarePipelinedTranscoder(
         isCancelled = false
         if (!sourceFile.exists() || sourceFile.length() == 0L) {
             emit(AppResult.Error(ConversionError.FileNotFound("Source video file not found: ${sourceFile.absolutePath}")))
+            return@flow
+        }
+
+        // Several device encoders have a hard floor well above the negotiated
+        // bitrate. Use FFmpeg only for this constrained regime; normal videos
+        // retain the fast hardware pipeline.
+        if (encodingSpec.videoBitrateBps < 300_000 && lowBitrateVideoFallback != null) {
+            analyticsTracker.logEvent(
+                "video_codec_fallback_selected",
+                mapOf(
+                    "reason" to "low_bitrate_hardware_floor",
+                    "requested_video_bitrate_bps" to encodingSpec.videoBitrateBps,
+                    "requested_audio_bitrate_bps" to encodingSpec.audioBitrateBps
+                )
+            )
+            lowBitrateVideoFallback.transcode(sourceFile, outputFile, encodingSpec).collect { emit(it) }
+            return@flow
+        }
+
+        // The fast Surface pipeline has been observed to publish an AAC track
+        // with zero samples on some emulator/device combinations. Route every
+        // source with audio through the explicit audio re-encode/mux path so a
+        // successful result can never silently lose its soundtrack. The video
+        // leg remains hardware-first; constrained audio still selects FFmpeg.
+        val sourceAudioBitrate = sourceAudioBitrate(sourceFile)
+        if (sourceAudioBitrate > 0) {
+            analyticsTracker.logEvent(
+                "video_audio_reencode_required",
+                mapOf(
+                    "source_audio_bitrate_bps" to sourceAudioBitrate,
+                    "requested_audio_bitrate_bps" to encodingSpec.audioBitrateBps,
+                    "effective_target_bytes" to encodingSpec.effectiveTargetBytes
+                )
+            )
+            if (audioTrackReencoder != null) {
+                val videoOnlyFile = File(outputFile.parentFile, "${outputFile.name}.video.tmp")
+                val audioOnlyFile = File(outputFile.parentFile, "${outputFile.name}.audio.tmp")
+                videoOnlyFile.delete()
+                audioOnlyFile.delete()
+                var videoSucceeded = false
+                var audioSucceeded = false
+                var lastError: Throwable? = null
+                videoOnlyTranscoder.transcode(
+                    sourceFile,
+                    videoOnlyFile,
+                    encodingSpec.copy(audioBitrateBps = 0)
+                ).collect { result ->
+                    when (result) {
+                        is AppResult.Progress -> emit(result)
+                        is AppResult.Success -> videoSucceeded = true
+                        is AppResult.Error -> lastError = result.throwable
+                    }
+                }
+                if (videoSucceeded) {
+                    audioTrackReencoder.transcodeAudio(
+                        sourceFile,
+                        audioOnlyFile,
+                        encodingSpec.audioBitrateBps
+                    ).collect { result ->
+                        when (result) {
+                            is AppResult.Progress -> emit(AppResult.Progress(60, result.currentStep))
+                            is AppResult.Success -> audioSucceeded = true
+                            is AppResult.Error -> lastError = result.throwable
+                        }
+                    }
+                }
+                if (videoSucceeded && audioSucceeded && muxVideoAndAudio(videoOnlyFile, audioOnlyFile, outputFile)) {
+                    emit(AppResult.Progress(100, "Video and audio tracks combined"))
+                    emit(AppResult.Success(outputFile))
+                } else {
+                    emit(
+                        AppResult.Error(
+                            lastError ?: ConversionError.IOError("Could not combine encoded video and audio tracks")
+                        )
+                    )
+                }
+                videoOnlyFile.delete()
+                audioOnlyFile.delete()
+            } else {
+                fallbackTranscoder.transcode(sourceFile, outputFile, encodingSpec).collect { result ->
+                    emit(result)
+                }
+            }
+            return@flow
+        }
+
+        // The Android software AVC encoder raises low bitrates to a codec-specific
+        // floor (observed on the emulator at ~392 kbps). Refuse impossible tight
+        // budgets before spending many minutes encoding an artifact that cannot fit.
+        val codecProfile = CodecCapabilityProber.probeAvcEncoder()
+        analyticsTracker.logEvent(
+            "video_encoder_capability",
+            mapOf(
+                "encoder" to codecProfile.encoderName,
+                "hardware_accelerated" to codecProfile.isHardwareAccelerated,
+                "supports_vbr" to codecProfile.supportsVbr,
+                "max_width" to codecProfile.maxSupportedWidth,
+                "max_height" to codecProfile.maxSupportedHeight
+            )
+        )
+        val softwareAvc = codecProfile.encoderName.lowercase().let {
+            it.contains("c2.android") || it.contains("omx.google")
+        }
+        if (softwareAvc && encodingSpec.videoBitrateBps < SOFTWARE_SAFE_MIN_VIDEO_BITRATE_BPS) {
+            emit(
+                AppResult.Error(
+                    ConversionError.CodecBudgetUnachievable(
+                        encoder = codecProfile.encoderName,
+                        targetBytes = encodingSpec.effectiveTargetBytes
+                    )
+                )
+            )
             return@flow
         }
 
@@ -75,6 +193,140 @@ class HardwarePipelinedTranscoder(
                 emit(fallbackResult)
             }
         }
+    }
+
+    private fun sourceAudioBitrate(sourceFile: File): Int {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(sourceFile.absolutePath)
+            val audioFormat = (0 until extractor.trackCount)
+                .map { extractor.getTrackFormat(it) }
+                .firstOrNull { it.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+            if (audioFormat == null) {
+                0
+            } else {
+                // Some Android demuxers omit KEY_BIT_RATE for valid AAC tracks.
+                // Treat that as an unknown real track, not as zero bitrate: zero
+                // previously bypassed the re-encode path and silently dropped audio.
+                runCatching { audioFormat.getInteger(MediaFormat.KEY_BIT_RATE) }
+                    .getOrNull()
+                    ?.takeIf { it > 0 }
+                    ?: BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS
+            }
+        } catch (_: Throwable) {
+            0
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }
+
+    private val videoOnlyTranscoder: VideoTranscoder = NativeVideoTranscoder()
+
+    private fun muxVideoAndAudio(videoFile: File, audioFile: File, outputFile: File): Boolean {
+        val videoExtractor = MediaExtractor()
+        val audioExtractor = MediaExtractor()
+        var muxer: MediaMuxer? = null
+        return try {
+            videoExtractor.setDataSource(videoFile.absolutePath)
+            audioExtractor.setDataSource(audioFile.absolutePath)
+            val videoTrack = (0 until videoExtractor.trackCount)
+                .firstOrNull { videoExtractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("video/") == true }
+                ?: return false
+            val audioTrack = (0 until audioExtractor.trackCount)
+                .firstOrNull { audioExtractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true }
+                ?: run {
+                    Log.e("TapConvertMedia", "audio reencode output has no audio track; tracks=${audioExtractor.trackCount}")
+                    return false
+                }
+            Log.i(
+                "TapConvertMedia",
+                "mux tracks video=${videoExtractor.trackCount} audio=${audioExtractor.trackCount} " +
+                    "audioMime=${audioExtractor.getTrackFormat(audioTrack).getString(MediaFormat.KEY_MIME)}"
+            )
+            outputFile.parentFile?.mkdirs()
+            if (outputFile.exists()) outputFile.delete()
+            muxer = MediaMuxer(outputFile.absolutePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            val muxVideoTrack = muxer.addTrack(videoExtractor.getTrackFormat(videoTrack))
+            val muxAudioTrack = muxer.addTrack(audioExtractor.getTrackFormat(audioTrack))
+            videoExtractor.selectTrack(videoTrack)
+            audioExtractor.selectTrack(audioTrack)
+            muxer.start()
+            copyTracksInterleaved(
+                videoExtractor,
+                muxVideoTrack,
+                audioExtractor,
+                muxAudioTrack,
+                muxer
+            )
+            muxer.stop()
+            val verificationExtractor = MediaExtractor()
+            runCatching {
+                verificationExtractor.setDataSource(outputFile.absolutePath)
+                Log.i(
+                    "TapConvertMedia",
+                    "mux verification tracks=${verificationExtractor.trackCount} mimes=" +
+                        (0 until verificationExtractor.trackCount).joinToString(",") {
+                            verificationExtractor.getTrackFormat(it).getString(MediaFormat.KEY_MIME).orEmpty()
+                        }
+                )
+            }
+            runCatching { verificationExtractor.release() }
+            true
+        } catch (_: Throwable) {
+            false
+        } finally {
+            runCatching { muxer?.release() }
+            runCatching { videoExtractor.release() }
+            runCatching { audioExtractor.release() }
+        }
+    }
+
+    private fun copyTracksInterleaved(
+        videoExtractor: MediaExtractor,
+        videoMuxerTrack: Int,
+        audioExtractor: MediaExtractor,
+        audioMuxerTrack: Int,
+        muxer: MediaMuxer
+    ) {
+        val videoBuffer = ByteBuffer.allocate(4 * 1024 * 1024)
+        val audioBuffer = ByteBuffer.allocate(512 * 1024)
+        val videoInfo = MediaCodec.BufferInfo()
+        val audioInfo = MediaCodec.BufferInfo()
+        videoExtractor.seekTo(0L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+        audioExtractor.seekTo(0L, MediaExtractor.SEEK_TO_CLOSEST_SYNC)
+        var videoSize = readSample(videoExtractor, videoBuffer, videoInfo)
+        var audioSize = readSample(audioExtractor, audioBuffer, audioInfo)
+        while (videoSize >= 0 || audioSize >= 0) {
+            val writeVideo = audioSize < 0 || (videoSize >= 0 && videoInfo.presentationTimeUs <= audioInfo.presentationTimeUs)
+            if (writeVideo && videoSize >= 0) {
+                muxer.writeSampleData(videoMuxerTrack, videoBuffer, videoInfo)
+                videoExtractor.advance()
+                videoSize = readSample(videoExtractor, videoBuffer, videoInfo)
+            } else if (audioSize >= 0) {
+                muxer.writeSampleData(audioMuxerTrack, audioBuffer, audioInfo)
+                audioExtractor.advance()
+                audioSize = readSample(audioExtractor, audioBuffer, audioInfo)
+            }
+        }
+    }
+
+    private fun readSample(
+        extractor: MediaExtractor,
+        buffer: ByteBuffer,
+        info: MediaCodec.BufferInfo
+    ): Int {
+        buffer.clear()
+        val size = extractor.readSampleData(buffer, 0)
+        if (size < 0) return -1
+        info.offset = 0
+        info.size = size
+        info.presentationTimeUs = extractor.sampleTime
+        info.flags = if ((extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+            MediaCodec.BUFFER_FLAG_KEY_FRAME
+        } else {
+            0
+        }
+        return size
     }
 
     private fun runPipeline(
@@ -136,6 +388,15 @@ class HardwarePipelinedTranscoder(
                 sourceVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
             } catch (_: Throwable) { 30 }.coerceIn(15, 60)
 
+            // This pipeline remuxes audio rather than re-encoding it. Only retain
+            // audio when its actual source bitrate fits the budget; otherwise the
+            // copied track would make the size estimate false and retries useless.
+            val sourceAudioBitrate = try {
+                sourceAudioFormat?.getInteger(MediaFormat.KEY_BIT_RATE) ?: 0
+            } catch (_: Throwable) { 0 }
+            val copyAudio = audioTrackIndex != -1 && sourceAudioFormat != null &&
+                sourceAudioBitrate > 0 && sourceAudioBitrate <= encodingSpec.audioBitrateBps
+
             // Calculate macroblock-aligned target dimensions
             val rawTargetW = if (encodingSpec.targetWidth > 0) encodingSpec.targetWidth else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).first
             val rawTargetH = if (encodingSpec.targetHeight > 0) encodingSpec.targetHeight else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).second
@@ -153,7 +414,17 @@ class HardwarePipelinedTranscoder(
                 outputMime = outputVideoMime
             )
 
-            encoder = MediaCodec.createEncoderByType(outputVideoMime)
+            // Some OEM hardware encoders impose a much higher floor than the
+            // requested bitrate. For an ultra-tight budget, prefer the
+            // platform software AVC encoder when available so the byte budget
+            // remains achievable instead of publishing an inflated artifact.
+            val softwareEncoderName = if (encodingSpec.videoBitrateBps < 100_000) {
+                CodecCapabilityProber.findSoftwareAvcEncoder()
+            } else {
+                null
+            }
+            encoder = softwareEncoderName?.let { MediaCodec.createByCodecName(it) }
+                ?: MediaCodec.createEncoderByType(outputVideoMime)
             encoder.configure(targetFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             val encoderInputSurface = encoder.createInputSurface()
             encoder.start()
@@ -191,6 +462,8 @@ class HardwarePipelinedTranscoder(
 
             var lastReportedProgress = 5
             var lastProgressTimeMs = 0L
+            val minOutputFrameIntervalUs = if (encodingSpec.videoBitrateBps < 100_000) 1_000_000L else 0L
+            var lastRenderedPresentationUs = Long.MIN_VALUE
 
             while (!encoderDone && !isCancelled && currentCoroutineContext().isActive) {
                 var hadActivity = false
@@ -222,7 +495,12 @@ class HardwarePipelinedTranscoder(
                     when {
                         decoderStatus >= 0 -> {
                             hadActivity = true
-                            if (bufferInfo.size > 0) {
+                            val shouldRender = bufferInfo.size > 0 &&
+                                (minOutputFrameIntervalUs == 0L ||
+                                    lastRenderedPresentationUs == Long.MIN_VALUE ||
+                                    bufferInfo.presentationTimeUs - lastRenderedPresentationUs >= minOutputFrameIntervalUs)
+                            if (shouldRender) {
+                                lastRenderedPresentationUs = bufferInfo.presentationTimeUs
                                 decoder.releaseOutputBuffer(decoderStatus, bufferInfo.presentationTimeUs * 1000L)
                             } else {
                                 decoder.releaseOutputBuffer(decoderStatus, false)
@@ -254,7 +532,7 @@ class HardwarePipelinedTranscoder(
                             val newFormat = encoder.outputFormat
                             muxerVideoTrack = muxer.addTrack(newFormat)
 
-                            if (audioTrackIndex != -1 && sourceAudioFormat != null) {
+                            if (copyAudio) {
                                 muxerAudioTrack = muxer.addTrack(sourceAudioFormat)
                             }
                             muxer.start()
@@ -274,7 +552,7 @@ class HardwarePipelinedTranscoder(
                                     muxer.writeSampleData(muxerVideoTrack, encodedBuffer, bufferInfo)
 
                                     // Interleave audio samples up to current video PTS
-                                    if (audioTrackIndex != -1 && muxerAudioTrack != -1 && !audioDone) {
+                                    if (copyAudio && muxerAudioTrack != -1 && !audioDone) {
                                         while (true) {
                                             val audioSampleTime = audioExtractor.sampleTime
                                             if (audioSampleTime < 0 || audioSampleTime > bufferInfo.presentationTimeUs) {
@@ -289,7 +567,11 @@ class HardwarePipelinedTranscoder(
                                             }
                                             audioBufferInfo.size = sampleSize
                                             audioBufferInfo.presentationTimeUs = audioSampleTime
-                                            audioBufferInfo.flags = audioExtractor.sampleFlags
+                                            audioBufferInfo.flags = if ((audioExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                                                MediaCodec.BUFFER_FLAG_KEY_FRAME
+                                            } else {
+                                                0
+                                            }
 
                                             audioBuffer.position(0)
                                             audioBuffer.limit(sampleSize)
@@ -337,7 +619,7 @@ class HardwarePipelinedTranscoder(
             }
 
             // 4. Mux any remaining trailing audio track samples to completion
-            if (audioTrackIndex != -1 && muxerStarted && muxerAudioTrack != -1 && !audioDone) {
+            if (copyAudio && muxerStarted && muxerAudioTrack != -1 && !audioDone) {
                 emit(AppResult.Progress(96, "Finalizing audio stream..."))
                 while (true) {
                     audioBufferInfo.offset = 0
@@ -346,7 +628,11 @@ class HardwarePipelinedTranscoder(
 
                     audioBufferInfo.size = sampleSize
                     audioBufferInfo.presentationTimeUs = audioExtractor.sampleTime
-                    audioBufferInfo.flags = audioExtractor.sampleFlags
+                    audioBufferInfo.flags = if ((audioExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                        MediaCodec.BUFFER_FLAG_KEY_FRAME
+                    } else {
+                        0
+                    }
 
                     audioBuffer.position(0)
                     audioBuffer.limit(sampleSize)
@@ -408,5 +694,9 @@ class HardwarePipelinedTranscoder(
         val outH = ((safeH * scale).roundToInt() / 2) * 2
 
         return Pair(outW.coerceAtLeast(144), outH.coerceAtLeast(144))
+    }
+
+    companion object {
+        const val SOFTWARE_SAFE_MIN_VIDEO_BITRATE_BPS = 400_000
     }
 }

@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import com.tapconvert.app.share.ui.ShareTargetBottomSheet
 import com.tapconvert.app.ui.theme.TapConvertTheme
 import com.tapconvert.core.database.repository.RoomConversionHistoryRepository
+import com.tapconvert.core.analytics.RegistryAnalyticsTracker
+import com.tapconvert.core.common.diagnostics.AppObservabilityRegistry
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
 import java.io.File
 
@@ -35,9 +37,12 @@ class ShareTargetActivity : ComponentActivity() {
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 val appContext = applicationContext
                 val repository = RoomConversionHistoryRepository.create(appContext)
+                val diagnosticsRegistry = AppObservabilityRegistry.instance
+                val diagnosticsAnalytics = RegistryAnalyticsTracker(diagnosticsRegistry)
                 return ShareTargetViewModel(
-                    mediaEngine = DefaultMediaEngine.create(appContext),
-                    historyRepository = repository
+                    mediaEngine = DefaultMediaEngine.create(appContext, analyticsTracker = diagnosticsAnalytics),
+                    historyRepository = repository,
+                    analyticsTracker = diagnosticsAnalytics
                 ) as T
             }
         }

@@ -6,20 +6,34 @@ import android.net.Uri
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
 import com.tapconvert.core.ads.AdReward
+import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.ads.DefaultAdManager
 import com.tapconvert.core.common.intake.IntakeResult
 import com.tapconvert.core.common.intake.MediaIntakeManager
 import com.tapconvert.core.common.intake.StagedMediaItem
 import com.tapconvert.core.database.repository.InMemoryConversionHistoryRepository
 import com.tapconvert.core.model.ConversionQuality
+import com.tapconvert.core.model.ConversionResult
+import com.tapconvert.core.model.ConversionType
 import com.tapconvert.core.model.DimensionConstraint
+import com.tapconvert.core.model.MimeType
 import com.tapconvert.core.model.Preset
 import com.tapconvert.core.model.TargetSize
 import com.tapconvert.core.testing.FakeAnalyticsTracker
 import com.tapconvert.feature.image.engine.DefaultImageEngine
 import com.tapconvert.feature.media.engine.DefaultMediaEngine
+import com.tapconvert.feature.media.engine.MediaEngine
 import com.tapconvert.feature.pdf.engine.DefaultPdfEngine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.Rule
@@ -48,6 +62,73 @@ class MainViewModelTest {
     @Test
     fun `initial uiState is Idle`() {
         assertThat(viewModel.uiState.value).isEqualTo(ConversionUiState.Idle)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `processing UI progress never moves backwards when an engine reports a regression`() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+        val source = tempFolder.newFile("progress-regression.mp4").apply {
+            writeBytes(ByteArray(1024) { 0x22 })
+        }
+        val fakeMediaEngine = object : MediaEngine {
+            override fun compressVideo(
+                request: com.tapconvert.core.model.ConversionRequest,
+                outputDirectory: File
+            ): Flow<AppResult<ConversionResult>> = flow {
+                emit(AppResult.Progress(89, "encoding"))
+                emit(AppResult.Progress(49, "fallback encoding"))
+                emit(AppResult.Progress(100, "finalizing"))
+                emit(
+                    AppResult.Success(
+                        ConversionResult(
+                            requestId = request.id,
+                            conversionType = ConversionType.VIDEO_COMPRESS,
+                            outputUris = listOf(File(outputDirectory, "result.mp4").absolutePath),
+                            originalSizeBytes = source.length(),
+                            outputSizeBytes = 512L,
+                            durationMs = 1L
+                        )
+                    )
+                )
+            }
+
+            override fun extractAudio(
+                request: com.tapconvert.core.model.ConversionRequest,
+                outputDirectory: File
+            ): Flow<AppResult<ConversionResult>> = flow { }
+        }
+        val vm = MainViewModel(
+            mediaEngine = fakeMediaEngine,
+            historyRepository = InMemoryConversionHistoryRepository(),
+            adManager = DefaultAdManager(),
+            analyticsTracker = FakeAnalyticsTracker()
+        )
+        val observedPercentages = mutableListOf<Int>()
+        val observer = backgroundScope.launch {
+            vm.uiState.collect { state ->
+                if (state is ConversionUiState.Processing) {
+                    observedPercentages += state.percentage
+                }
+            }
+        }
+
+        vm.configureCustom(
+            sourceUris = listOf("file://${source.absolutePath}"),
+            conversionType = ConversionType.VIDEO_COMPRESS,
+            targetMimeType = MimeType.Video.MP4
+        )
+        vm.startConversion(tempFolder.root)
+        advanceUntilIdle()
+        observer.cancel()
+
+        assertThat(vm.uiState.value).isInstanceOf(ConversionUiState.Success::class.java)
+        assertThat(observedPercentages.zipWithNext().all { (previous, current) -> current >= previous })
+            .isTrue()
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 
     @Test

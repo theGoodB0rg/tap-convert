@@ -1,6 +1,9 @@
 package com.tapconvert.feature.media.engine
 
 import android.content.Context
+import android.media.MediaCodec
+import android.media.MediaExtractor
+import android.os.Build
 import com.tapconvert.core.analytics.AnalyticsTracker
 import com.tapconvert.core.analytics.NoOpAnalyticsTracker
 import com.tapconvert.core.common.AppResult
@@ -26,9 +29,39 @@ interface MediaEngine {
     fun extractAudio(request: ConversionRequest, outputDirectory: File): Flow<AppResult<ConversionResult>>
 }
 
+data class MediaIntegrityCheck(
+    val outputInfo: MediaMetadataRetrieverHelper.MediaInfo?,
+    val failureReason: String?
+)
+
+fun interface MediaIntegrityChecker {
+    fun check(
+        sourceInfo: MediaMetadataRetrieverHelper.MediaInfo?,
+        outputFile: File
+    ): MediaIntegrityCheck
+}
+
+private val strictMediaIntegrityChecker = MediaIntegrityChecker { sourceInfo, outputFile ->
+    val outputInfo = MediaMetadataRetrieverHelper.extractMediaInfo(outputFile)
+    val sourceDurationMs = sourceInfo?.durationMs ?: 0L
+    val outputDurationMs = outputInfo?.durationMs ?: 0L
+    val durationIsValid = sourceDurationMs <= 0L ||
+        (outputDurationMs >= (sourceDurationMs * 0.98).toLong() &&
+            outputDurationMs <= (sourceDurationMs * 1.02).toLong())
+    val audioIsValid = sourceInfo?.hasAudio != true || outputInfo?.hasAudio == true
+    val reason = when {
+        outputInfo == null -> "output could not be parsed"
+        !audioIsValid -> "source audio track was not preserved"
+        !durationIsValid -> "duration changed from ${sourceDurationMs}ms to ${outputDurationMs}ms"
+        else -> null
+    }
+    MediaIntegrityCheck(outputInfo, reason)
+}
+
 class DefaultMediaEngine(
     private val analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker(),
-    private val transcoder: VideoTranscoder = Media3VideoTranscoder()
+    private val transcoder: VideoTranscoder = Media3VideoTranscoder(),
+    private val integrityChecker: MediaIntegrityChecker = strictMediaIntegrityChecker
 ) : MediaEngine {
 
     override fun compressVideo(
@@ -36,6 +69,12 @@ class DefaultMediaEngine(
         outputDirectory: File
     ): Flow<AppResult<ConversionResult>> = flow {
         val startTime = System.currentTimeMillis()
+        var lastReportedProgress = 0
+        suspend fun emitMonotonicProgress(percentage: Int, step: String) {
+            val monotonic = percentage.coerceIn(lastReportedProgress, 100)
+            lastReportedProgress = monotonic
+            emit(AppResult.Progress(monotonic, step))
+        }
         if (request.sourceUris.isEmpty()) {
             val error = ConversionError.FileNotFound("No source video URI provided")
             analyticsTracker.logConversionFailed(ConversionType.VIDEO_COMPRESS, "FileNotFound", error.userReadableMessage, request.preset?.id)
@@ -47,11 +86,19 @@ class DefaultMediaEngine(
         val outputUris = mutableListOf<String>()
         var totalOriginalSize = 0L
         var totalOutputSize = 0L
+        var totalHardOutputLimit = 0L
+        var totalOvershootRetries = 0
         outputDirectory.mkdirs()
+
+        // Capture the immutable input-size baseline before encoding begins so
+        // diagnostics can correlate failures and throughput with real payloads.
+        val requestedInputSizeBytes = request.sourceUris.sumOf { uriStr ->
+            File(uriStr.removePrefix("file://")).takeIf { it.exists() }?.length() ?: 0L
+        }
 
         analyticsTracker.logConversionStarted(
             type = ConversionType.VIDEO_COMPRESS,
-            inputSizeBytes = 0L,
+            inputSizeBytes = requestedInputSizeBytes,
             sourceFormat = "video/*",
             presetId = request.preset?.id
         )
@@ -62,11 +109,15 @@ class DefaultMediaEngine(
             val originalSize = if (sourceFile.exists()) sourceFile.length() else 0L
             totalOriginalSize += originalSize
 
-            val baseProgress = (index.toFloat() / totalFiles.toFloat() * 100f).toInt()
-            emit(AppResult.Progress(
-                percentage = baseProgress + (10 / totalFiles).coerceAtLeast(1),
-                currentStep = ConversionProgress(15, ConversionStage.ANALYZING).overallSummary
-            ))
+            val itemStart = (index.toFloat() / totalFiles.toFloat() * 100f)
+            val itemSpan = 100f / totalFiles.toFloat()
+            fun itemProgress(phasePercent: Float): Int =
+                (itemStart + itemSpan * phasePercent / 100f).toInt()
+
+            emitMonotonicProgress(
+                itemProgress(10f),
+                ConversionProgress(itemProgress(10f), ConversionStage.ANALYZING).overallSummary
+            )
 
             if (!sourceFile.exists()) {
                 val error = ConversionError.FileNotFound(uriStr)
@@ -80,10 +131,10 @@ class DefaultMediaEngine(
             val sourceWidth = mediaInfo?.width ?: 1920
             val sourceHeight = mediaInfo?.height ?: 1080
 
-            emit(AppResult.Progress(
-                percentage = baseProgress + (25 / totalFiles).coerceAtLeast(1),
-                currentStep = ConversionProgress(30, ConversionStage.PREPARING).overallSummary
-            ))
+            emitMonotonicProgress(
+                itemProgress(25f),
+                ConversionProgress(itemProgress(25f), ConversionStage.PREPARING).overallSummary
+            )
 
             var encodingSpec = BitrateCalculator.calculateTargetBitrate(
                 targetSize = request.targetSize,
@@ -94,6 +145,49 @@ class DefaultMediaEngine(
                 quality = request.quality,
                 audioBitrateBps = request.customAudioBitrateKbps?.let { it * 1000 } ?: BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS
             )
+            // Compression must never publish an artifact larger than either the
+            // requested budget or the input. This is the invariant the UI promises.
+            // The requested target is an estimate, not a byte-for-byte promise.
+            // Video upload services commonly allow a small fixed slack; keep the
+            // same absolute tolerance in the UI estimate, encoder budget and
+            // final publication check while never exceeding the source.
+            val hardOutputLimit = minOf(
+                request.targetSize?.maxAllowedBytes ?: encodingSpec.effectiveTargetBytes,
+                encodingSpec.effectiveTargetBytes,
+                originalSize
+            )
+            val minimumPlayableBytes = BitrateCalculator.minimumPlayableBytes(durationSeconds)
+            val compressionRatio = if (originalSize > 0L) {
+                encodingSpec.effectiveTargetBytes.toDouble() / originalSize.toDouble()
+            } else 1.0
+            if (compressionRatio < 0.10) {
+                analyticsTracker.logEvent(
+                    "video_compression_warning",
+                    mapOf(
+                        "warning" to "aggressive_compression_ratio",
+                        "input_size_bytes" to originalSize,
+                        "estimated_output_bytes" to encodingSpec.effectiveTargetBytes,
+                        "estimated_ratio" to compressionRatio,
+                        "last_resort" to true
+                    )
+                )
+            }
+            if (hardOutputLimit < minimumPlayableBytes) {
+                val warning = "Target may be unrealistic for ${durationSeconds.toInt()}s while preserving audio"
+                analyticsTracker.logEvent(
+                    "video_compression_warning",
+                    mapOf(
+                        "warning" to "unrealistic_media_budget",
+                        "input_size_bytes" to originalSize,
+                        "hard_output_limit_bytes" to hardOutputLimit,
+                        "conservative_minimum_playable_bytes" to minimumPlayableBytes,
+                        "duration_seconds" to durationSeconds,
+                        "audio_preservation_required" to (mediaInfo?.hasAudio == true),
+                        "last_resort" to true
+                    )
+                )
+            }
+            totalHardOutputLimit += hardOutputLimit
 
             val outputFileName = if (totalFiles == 1 && !request.outputFileName.isNullOrBlank()) {
                 request.outputFileName!!
@@ -111,6 +205,9 @@ class DefaultMediaEngine(
             var transcodeSuccess = false
             var transcodeError: Throwable? = null
             var attempt = 1
+            // A single compensation pass handles normal VBR jitter. Severe
+            // overshoot is treated as a codec incompatibility and fails fast;
+            // repeating a full encode cannot make a codec-imposed floor fit.
             val maxAttempts = 2
 
             while (attempt <= maxAttempts && !transcodeSuccess) {
@@ -119,9 +216,9 @@ class DefaultMediaEngine(
                 transcoder.transcode(sourceFile, tempFile, encodingSpec).collect { transcodeResult ->
                     when (transcodeResult) {
                         is AppResult.Progress -> {
-                            val mappedPct = baseProgress + (35 + transcodeResult.percentage * 0.55f) / totalFiles
-                            val stepText = ConversionProgress(mappedPct.toInt(), ConversionStage.COMPRESSING).overallSummary
-                            emit(AppResult.Progress(mappedPct.toInt(), stepText))
+                            val mappedPct = itemProgress(35f + transcodeResult.percentage * 0.55f)
+                            val stepText = ConversionProgress(mappedPct, ConversionStage.COMPRESSING).overallSummary
+                            emitMonotonicProgress(mappedPct, stepText)
                         }
                         is AppResult.Success -> {
                             transcodeSuccess = true
@@ -134,15 +231,24 @@ class DefaultMediaEngine(
 
                 if (transcodeSuccess && tempFile.exists() && tempFile.length() > 0L) {
                     val actualBytes = tempFile.length()
-                    val targetBudget = encodingSpec.effectiveTargetBytes
+                    val targetBudget = hardOutputLimit
 
-                    // Closed-Loop Verification:
-                    // Only trigger fallback compensation if encoder severely overshot budget (by > 15%)
-                    if (actualBytes > targetBudget * 1.15 && attempt < maxAttempts && originalSize > 0L) {
+                    // Closed-loop verification: the published output must never exceed the
+                    // effective target budget. A codec may overshoot the requested bitrate,
+                    // so compensate until the hard byte contract is met or fail safely.
+                    val overshootRatio = if (targetBudget > 0L) {
+                        actualBytes.toDouble() / targetBudget.toDouble()
+                    } else Double.POSITIVE_INFINITY
+                    if (actualBytes > targetBudget &&
+                        overshootRatio < 2.0 &&
+                        attempt < maxAttempts &&
+                        originalSize > 0L
+                    ) {
                         val overshootFactor = targetBudget.toDouble() / actualBytes.toDouble()
-                        val reduction = (overshootFactor * 0.90).coerceIn(0.60, 0.85)
+                        val reduction = (overshootFactor * 0.88).coerceIn(0.45, 0.82)
                         encodingSpec = BitrateCalculator.createCompensatedSpec(encodingSpec, reduction)
                         transcodeSuccess = false
+                        totalOvershootRetries++
                         attempt++
                     } else {
                         break
@@ -169,6 +275,62 @@ class DefaultMediaEngine(
                 return@flow
             }
 
+            if (tempFile.length() > hardOutputLimit) {
+                val actualOversizeBytes = tempFile.length()
+                tempFile.delete()
+                val targetError = ConversionError.OutputBudgetExceeded(
+                    actualBytes = actualOversizeBytes,
+                    limitBytes = hardOutputLimit
+                )
+                analyticsTracker.logEvent(
+                    "video_output_budget_exceeded",
+                    mapOf(
+                        "input_size_bytes" to originalSize,
+                        "output_size_bytes" to actualOversizeBytes,
+                        "hard_output_limit_bytes" to hardOutputLimit
+                    )
+                )
+                analyticsTracker.logConversionFailed(
+                    type = ConversionType.VIDEO_COMPRESS,
+                    errorType = "OutputBudgetExceeded",
+                    errorMessage = targetError.userReadableMessage,
+                    presetId = request.preset?.id
+                )
+                emit(AppResult.Error(targetError))
+                return@flow
+            }
+
+            // Never publish a playable-looking file that silently lost its
+            // soundtrack or was truncated during transcoding.
+            val integrityCheck = integrityChecker.check(mediaInfo, tempFile)
+            val outputMediaInfo = integrityCheck.outputInfo
+            val sourceDurationMs = mediaInfo?.durationMs ?: 0L
+            val outputDurationMs = outputMediaInfo?.durationMs ?: 0L
+            val sourceHasAudio = mediaInfo?.hasAudio == true
+            if (integrityCheck.failureReason != null) {
+                val reason = integrityCheck.failureReason
+                tempFile.delete()
+                val integrityError = ConversionError.MediaIntegrityFailure(reason)
+                analyticsTracker.logEvent(
+                    "video_media_integrity_failure",
+                    mapOf(
+                        "reason" to reason,
+                        "input_duration_ms" to sourceDurationMs,
+                        "output_duration_ms" to outputDurationMs,
+                        "input_has_audio" to sourceHasAudio,
+                        "output_has_audio" to (outputMediaInfo?.hasAudio ?: false)
+                    )
+                )
+                analyticsTracker.logConversionFailed(
+                    type = ConversionType.VIDEO_COMPRESS,
+                    errorType = "MediaIntegrityFailure",
+                    errorMessage = integrityError.userReadableMessage,
+                    presetId = request.preset?.id
+                )
+                emit(AppResult.Error(integrityError))
+                return@flow
+            }
+
             // Atomic rename from staging .tmp to final output
             if (outputFile.exists()) outputFile.delete()
             val renamed = tempFile.renameTo(outputFile)
@@ -181,7 +343,7 @@ class DefaultMediaEngine(
             outputUris.add(outputFile.absolutePath)
         }
 
-        emit(AppResult.Progress(95, ConversionProgress(95, ConversionStage.FINALIZING).overallSummary))
+        emitMonotonicProgress(95, ConversionProgress(95, ConversionStage.FINALIZING).overallSummary)
 
         val duration = System.currentTimeMillis() - startTime
         analyticsTracker.logConversionCompleted(
@@ -190,6 +352,24 @@ class DefaultMediaEngine(
             inputSizeBytes = totalOriginalSize,
             outputSizeBytes = totalOutputSize,
             presetId = request.preset?.id
+        )
+        analyticsTracker.logEvent(
+            "video_compression_contract",
+            mapOf(
+                "input_size_bytes" to totalOriginalSize,
+                "output_size_bytes" to totalOutputSize,
+                "hard_output_limit_bytes" to totalHardOutputLimit,
+                "budget_compliant" to (totalOutputSize <= totalHardOutputLimit),
+                "source_size_compliant" to (totalOutputSize <= totalOriginalSize),
+                "overshoot_retries" to totalOvershootRetries,
+                "duration_ms" to duration,
+                "input_throughput_kbps" to if (duration > 0L) {
+                    (totalOriginalSize * 1000L) / (duration * 1024L)
+                } else 0L,
+                "output_throughput_kbps" to if (duration > 0L) {
+                    (totalOutputSize * 1000L) / (duration * 1024L)
+                } else 0L
+            )
         )
 
         emit(
@@ -202,8 +382,10 @@ class DefaultMediaEngine(
                     outputSizeBytes = totalOutputSize,
                     durationMs = duration,
                     metadata = mapOf(
-                        "videoBitrateBps" to (request.targetSize?.bytes ?: 0L).toString(),
+                        "videoBitrateBps" to "see per-file encoder trace",
                         "audioBitrateBps" to BitrateCalculator.DEFAULT_AUDIO_BITRATE_BPS.toString(),
+                        "estimatedOutputSizeBytes" to totalHardOutputLimit.toString(),
+                        "maxOutputSizeBytes" to totalHardOutputLimit.toString(),
                         "targetMaxDimension" to "1280",
                         "batchCount" to totalFiles.toString()
                     )
@@ -359,7 +541,11 @@ class DefaultMediaEngine(
                     break
                 }
                 bufferInfo.presentationTimeUs = extractor.sampleTime
-                bufferInfo.flags = extractor.sampleFlags
+                bufferInfo.flags = if ((extractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                    MediaCodec.BUFFER_FLAG_KEY_FRAME
+                } else {
+                    0
+                }
                 muxer.writeSampleData(muxerTrackIndex, buffer, bufferInfo)
                 extractor.advance()
             }
@@ -380,6 +566,15 @@ class DefaultMediaEngine(
             analyticsTracker: AnalyticsTracker = NoOpAnalyticsTracker()
         ): DefaultMediaEngine {
             val appContext = context.applicationContext
+            val ffmpegAvailable = FfmpegSupport.isSupported()
+            analyticsTracker.logEvent(
+                "ffmpeg_capability",
+                mapOf(
+                    "available" to ffmpegAvailable,
+                    "abi" to Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+                )
+            )
+            val normalAudio = Media3AudioTrackReencoder(appContext)
             return DefaultMediaEngine(
                 analyticsTracker = analyticsTracker,
                 transcoder = HardwarePipelinedTranscoder(
@@ -388,7 +583,21 @@ class DefaultMediaEngine(
                         mainDispatcher = Dispatchers.Main.immediate,
                         looper = appContext.mainLooper,
                         fallbackTranscoder = NativeVideoTranscoder()
-                    )
+                    ),
+                    analyticsTracker = analyticsTracker,
+                    // FFmpeg is used for the constrained audio leg because this
+                    // device family demonstrably floors MediaCodec AAC near
+                    // 64 kbps, which can inflate long videos instead of meeting
+                    // the negotiated byte budget. Video remains hardware-first.
+                    audioTrackReencoder = HybridAudioTrackReencoder(
+                        normal = normalAudio,
+                        constrained = if (ffmpegAvailable) {
+                            FfmpegAudioTrackReencoder(appContext)
+                        } else {
+                            normalAudio
+                        }
+                    ),
+                    lowBitrateVideoFallback = if (ffmpegAvailable) FfmpegVideoTranscoder() else null
                 )
             )
         }

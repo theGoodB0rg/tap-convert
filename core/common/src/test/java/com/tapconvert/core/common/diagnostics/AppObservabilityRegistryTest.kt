@@ -47,4 +47,27 @@ class AppObservabilityRegistryTest {
         assertThat(json).contains("\"stats\"")
         assertThat(json).doesNotContain("/data/user")
     }
+
+    @Test
+    fun `recordEvent stores bounded sanitized observations`() {
+        val registry = AppObservabilityRegistry(maxTracesCapacity = 2)
+        registry.recordEvent(
+            "video_compression_contract",
+            mapOf(
+                "outputPath" to "/data/user/0/com.tapconvert.app/files/private.mp4",
+                "bytes" to 123L,
+                "duration_ms" to 1200L,
+                "input_throughput_kbps" to 5120L,
+                "output_throughput_kbps" to 1024L
+            )
+        )
+
+        val event = registry.createSnapshot().recentEvents.single()
+        assertThat(event.name).isEqualTo("video_compression_contract")
+        assertThat(event.params["outputPath"]).doesNotContain("/data/user")
+        assertThat(event.params["duration_ms"]).isEqualTo("1200")
+        assertThat(event.params["input_throughput_kbps"]).isEqualTo("5120")
+        assertThat(event.params["output_throughput_kbps"]).isEqualTo("1024")
+        assertThat(registry.exportSanitizedReportJson()).contains("recentEvents")
+    }
 }

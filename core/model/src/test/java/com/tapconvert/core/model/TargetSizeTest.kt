@@ -43,6 +43,15 @@ class TargetSizeTest {
     }
 
     @Test
+    fun `absolute tolerance supports fixed upload slack`() {
+        val target = TargetSize.fromMegabytes(16, toleranceBytes = 768L * 1024L)
+
+        assertThat(target.maxAllowedBytes).isEqualTo(16L * 1024L * 1024L + 768L * 1024L)
+        assertThat(target.minAllowedBytes).isEqualTo(16L * 1024L * 1024L - 768L * 1024L)
+        assertThat(target.isWithinTolerance(16L * 1024L * 1024L + 768L * 1024L)).isTrue()
+    }
+
+    @Test
     fun `invalid arguments throw IllegalArgumentException`() {
         assertThrows(IllegalArgumentException::class.java) {
             TargetSize(0L)

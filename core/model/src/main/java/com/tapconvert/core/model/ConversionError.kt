@@ -19,6 +19,27 @@ sealed class ConversionError(
         val targetBytes: Long
     ) : ConversionError("Could not reach target size ${TargetSize(targetBytes).formatted()}. Smallest achievable size was ${TargetSize(minAchievableBytes).formatted()}.")
 
+    data class CodecBudgetUnachievable(
+        val encoder: String,
+        val targetBytes: Long? = null
+    ) : ConversionError(
+        if (targetBytes != null) {
+            "This device's $encoder video encoder cannot meet the requested ${TargetSize(targetBytes).formatted()} size limit. Try a less aggressive compression setting or use a hardware-accelerated device."
+        } else {
+            "This device's $encoder video encoder cannot meet the requested size limit. Try a less aggressive compression setting or use a hardware-accelerated device."
+        }
+    )
+
+    data class OutputBudgetExceeded(
+        val actualBytes: Long,
+        val limitBytes: Long
+    ) : ConversionError(
+        "Video output exceeded the ${TargetSize(limitBytes).formatted()} limit (measured ${TargetSize(actualBytes).formatted()}); no output was published."
+    )
+
+    data class MediaIntegrityFailure(val reason: String) :
+        ConversionError("The converted video failed media-integrity checks: $reason")
+
     data class InsufficientStorage(
         val requiredBytes: Long,
         val availableBytes: Long

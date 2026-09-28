@@ -96,4 +96,29 @@ object CodecCapabilityProber {
     fun clearCache() {
         cachedAvcProfile = null
     }
+
+    /** Returns a software AVC encoder when the device exposes one. */
+    fun findSoftwareAvcEncoder(): String? {
+        val infos = try {
+            MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos
+        } catch (_: Throwable) {
+            emptyArray()
+        }
+        return infos.firstOrNull { info ->
+            if (!info.isEncoder || !info.supportedTypes.contains(MediaFormat.MIMETYPE_VIDEO_AVC)) {
+                false
+            } else {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        !info.isHardwareAccelerated
+                    } else {
+                        val name = info.name.lowercase()
+                        name.startsWith("c2.android.") || name.startsWith("omx.google.")
+                    }
+                } catch (_: Throwable) {
+                    false
+                }
+            }
+        }?.name
+    }
 }

@@ -21,8 +21,8 @@ android {
         applicationId = "com.tapconvert.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.0.1"
+        versionCode = 6
+        versionName = "1.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -145,6 +145,9 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.truth)
+    androidTestImplementation(libs.turbine)
 }
 
 tasks.register<Copy>("copyDebugApkToDist") {

@@ -48,6 +48,28 @@ class Media3VideoTranscoderTest {
     }
 
     @Test
+    fun `null context fallback refuses a source larger than the byte budget`() = runTest {
+        val largeSource = File(tempDir, "large_input_test.mp4").apply {
+            writeBytes(ByteArray(17 * 1024 * 1024) { 0x44 })
+        }
+        val transcoder = Media3VideoTranscoder(context = null)
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 30.0,
+            sourceSizeBytes = largeSource.length()
+        )
+
+        transcoder.transcode(largeSource, outputFile, spec).test {
+            val result = awaitItem()
+            assertThat(result).isInstanceOf(AppResult.Error::class.java)
+            assertThat((result as AppResult.Error).throwable)
+                .isInstanceOf(com.tapconvert.core.model.ConversionError.OutputBudgetExceeded::class.java)
+            assertThat(outputFile.exists()).isFalse()
+            awaitComplete()
+        }
+    }
+
+    @Test
     fun `cancel can be called safely without active session`() {
         val transcoder = Media3VideoTranscoder(context = null)
         transcoder.cancel() // Should not throw

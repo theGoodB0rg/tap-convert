@@ -26,7 +26,12 @@ object TranscoderConfigurator {
     ): MediaFormat {
         val alignedWidth = alignToMacroblock(targetWidth)
         val alignedHeight = alignToMacroblock(targetHeight)
-        val clampedFrameRate = frameRate.coerceIn(15, 60)
+        val clampedFrameRate = when {
+            bitrateBps < 100_000 -> 1
+            bitrateBps < 500_000 -> 15
+            bitrateBps < 800_000 -> minOf(frameRate, 24)
+            else -> frameRate.coerceIn(15, 60)
+        }
 
         val format = (try {
             MediaFormat.createVideoFormat(outputMime, alignedWidth, alignedHeight)
@@ -36,13 +41,26 @@ object TranscoderConfigurator {
             trySafely { setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) }
             trySafely { setInteger(MediaFormat.KEY_BIT_RATE, bitrateBps.coerceAtLeast(BitrateCalculator.MIN_VIDEO_BITRATE_BPS)) }
             trySafely { setInteger(MediaFormat.KEY_FRAME_RATE, clampedFrameRate) }
-            trySafely { setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, iFrameIntervalSeconds.coerceAtLeast(1)) }
+            val lowBitrateIFrameInterval = if (bitrateBps < 100_000) 10 else iFrameIntervalSeconds
+            trySafely { setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, lowBitrateIFrameInterval.coerceAtLeast(1)) }
 
-            // Variable Bitrate mode for optimal compression and strict budgeting
+            // Constant Bitrate mode is intentional here: several OEM surface
+            // encoders ignore a low VBR target and silently fall back to a much
+            // higher profile bitrate, which breaks the byte-size contract.
             trySafely {
                 setInteger(
                     MediaFormat.KEY_BITRATE_MODE,
-                    MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR
+                    MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR
+                )
+            }
+
+            // Some vendor codecs consult KEY_MAX_BIT_RATE even in CBR mode.
+            // Keeping it equal to the requested bitrate prevents an OEM from
+            // selecting a large implicit peak bitrate for long videos.
+            trySafely {
+                setInteger(
+                    MAX_BITRATE_KEY,
+                    bitrateBps.coerceAtLeast(BitrateCalculator.MIN_VIDEO_BITRATE_BPS)
                 )
             }
 
@@ -97,4 +115,8 @@ object TranscoderConfigurator {
             // Ignored on legacy OEM devices that reject extended MediaFormat keys
         }
     }
+
+    // The Android SDK stubs used by this project omit MediaFormat.KEY_MAX_BIT_RATE,
+    // but vendor codecs commonly consume its platform key by name.
+    private const val MAX_BITRATE_KEY = "max-bitrate"
 }

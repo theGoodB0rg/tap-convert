@@ -22,7 +22,7 @@ data class Preset(
             category = MediaCategory.VIDEO,
             conversionType = ConversionType.VIDEO_COMPRESS,
             targetMimeType = MimeType.Video.MP4,
-            targetSize = TargetSize.fromMegabytes(16),
+            targetSize = TargetSize.fromMegabytes(16, toleranceBytes = TargetSize.DEFAULT_VIDEO_TOLERANCE_BYTES),
             dimensionConstraint = DimensionConstraint.MaxDimension(1280),
             quality = ConversionQuality.Medium,
             tag = "Social"
@@ -35,7 +35,7 @@ data class Preset(
             category = MediaCategory.VIDEO,
             conversionType = ConversionType.VIDEO_COMPRESS,
             targetMimeType = MimeType.Video.MP4,
-            targetSize = TargetSize.fromMegabytes(25),
+            targetSize = TargetSize.fromMegabytes(25, toleranceBytes = TargetSize.DEFAULT_VIDEO_TOLERANCE_BYTES),
             dimensionConstraint = DimensionConstraint.MaxDimension(1920),
             quality = ConversionQuality.High,
             tag = "Email"
@@ -48,7 +48,7 @@ data class Preset(
             category = MediaCategory.VIDEO,
             conversionType = ConversionType.VIDEO_COMPRESS,
             targetMimeType = MimeType.Video.MP4,
-            targetSize = TargetSize.fromMegabytes(10),
+            targetSize = TargetSize.fromMegabytes(10, toleranceBytes = TargetSize.DEFAULT_VIDEO_TOLERANCE_BYTES),
             dimensionConstraint = DimensionConstraint.MaxDimension(1280),
             quality = ConversionQuality.Medium,
             tag = "Social"

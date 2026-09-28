@@ -47,6 +47,8 @@ import com.tapconvert.app.ui.settings.SettingsScreen
 import com.tapconvert.app.ui.theme.AccentAmber
 import com.tapconvert.app.ui.theme.TapConvertTheme
 import com.tapconvert.core.ads.AdReward
+import com.tapconvert.core.analytics.RegistryAnalyticsTracker
+import com.tapconvert.core.common.diagnostics.AppObservabilityRegistry
 import com.tapconvert.core.common.DataStoreAppSettingsManager
 import com.tapconvert.core.common.MediaPublicExporter
 import com.tapconvert.core.database.cleaner.LruDiskCleaner
@@ -101,6 +103,8 @@ fun TapConvertApp() {
     val reviewPromptManager = remember { com.tapconvert.core.common.DataStoreReviewPromptManager.create(context) }
     val reviewLauncher = remember { com.tapconvert.core.common.PlayStoreFallbackReviewLauncher(context) }
     val lifetimeStatsManager = remember { com.tapconvert.core.common.DataStoreLifetimeStatsManager.create(context) }
+    val diagnosticsRegistry = remember { AppObservabilityRegistry.instance }
+    val diagnosticsAnalytics = remember { RegistryAnalyticsTracker(diagnosticsRegistry) }
 
     val mainViewModel: MainViewModel = viewModel(factory = object : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
@@ -108,11 +112,13 @@ fun TapConvertApp() {
             val appContext = context.applicationContext
             val verifier = (appContext as? TapConvertApplication)?.entitlementVerifier
             return MainViewModel(
-                mediaEngine = DefaultMediaEngine.create(appContext),
+                mediaEngine = DefaultMediaEngine.create(appContext, analyticsTracker = diagnosticsAnalytics),
                 historyRepository = repository,
                 reviewPromptManager = reviewPromptManager,
                 reviewLauncher = reviewLauncher,
                 lifetimeStatsManager = lifetimeStatsManager,
+                analyticsTracker = diagnosticsAnalytics,
+                observabilityRegistry = diagnosticsRegistry,
                 isProVerifiedProvider = verifier?.let { v ->
                     { v.entitlement.value.isProVerified() }
                 }

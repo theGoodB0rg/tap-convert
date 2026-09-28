@@ -32,6 +32,32 @@ class BitrateCalculatorTest {
     }
 
     @Test
+    fun `ultra long target selects a bitrate and frame size that can fit the byte budget`() {
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 7_777.7,
+            sourceSizeBytes = 337_236_873L,
+            sourceWidth = 996,
+            sourceHeight = 540,
+            quality = ConversionQuality.Medium
+        )
+
+        assertThat(spec.videoBitrateBps).isAtMost(20_000)
+        assertThat(spec.recommendedMaxDimension).isEqualTo(144)
+        assertThat(spec.estimatedTotalSizeBytes).isAtMost(TargetSize.fromMegabytes(16).maxAllowedBytes)
+    }
+
+    @Test
+    fun `minimum playable bytes exposes unrealistic long audio target`() {
+        val minimum = BitrateCalculator.minimumPlayableBytes(7_777.7)
+
+        assertThat(minimum).isGreaterThan(TargetSize.fromMegabytes(16).maxAllowedBytes)
+        assertThat(BitrateCalculator.minimumPlayableBytes(98.0)).isLessThan(
+            TargetSize.fromMegabytes(4).maxAllowedBytes
+        )
+    }
+
+    @Test
     fun `calculateTargetBitrate with 10 percent quality scales 32_5MB video to approximately 3_25MB`() {
         val source32_5Mb = 34_078_720L // 32.5 MB in bytes
         val duration30s = 30.0
@@ -133,7 +159,8 @@ class BitrateCalculatorTest {
         val duration60s = 60.0
         val target16Mb = TargetSize.fromMegabytes(16)
 
-        // Even if quality is default Medium (65%), output budget and bitrate MUST fit in 16MB, not 50.8MB
+        // Even if quality is default Medium (65%), output budget and bitrate
+        // MUST fit in the target plus its explicit tolerance, not 50.8MB.
         val spec = BitrateCalculator.calculateTargetBitrate(
             targetSize = target16Mb,
             durationSeconds = duration60s,
@@ -142,8 +169,8 @@ class BitrateCalculatorTest {
             quality = ConversionQuality.Medium
         )
 
-        assertThat(spec.effectiveTargetBytes).isAtMost(target16Mb.bytes)
-        assertThat(spec.estimatedTotalSizeBytes).isAtMost(target16Mb.bytes)
+        assertThat(spec.effectiveTargetBytes).isAtMost(target16Mb.maxAllowedBytes)
+        assertThat(spec.estimatedTotalSizeBytes).isAtMost(target16Mb.maxAllowedBytes)
         // Bitrate should be budgeted for 16MB (~1.8-2.0 Mbps), not for 50MB (~6 Mbps)
         assertThat(spec.videoBitrateBps).isLessThan(2_500_000)
     }
@@ -265,11 +292,11 @@ class BitrateCalculatorTest {
     }
 
     @Test
-    fun `custom quality slider percentage takes precedence over preset target size when user chooses higher quality`() {
+    fun `custom quality slider cannot make displayed estimate exceed preset target`() {
         val sourceSize = 100 * 1024 * 1024L // 100 MB
         val target16Mb = TargetSize.fromMegabytes(16) // 16 MB WhatsApp target
 
-        // User dragged slider up to 40% (40 MB target)
+        // User dragged slider up to 40%; the fixed preset remains authoritative.
         val spec40Pct = BitrateCalculator.calculateTargetBitrate(
             targetSize = target16Mb,
             durationSeconds = 60.0,
@@ -277,10 +304,11 @@ class BitrateCalculatorTest {
             quality = ConversionQuality.Custom(40)
         )
 
-        // Effective budget should reflect the user's explicit 40% (40 MB), not be silently clamped to 16 MB
-        val expected40Mb = (sourceSize * 0.40).toLong()
-        assertThat(spec40Pct.effectiveTargetBytes).isEqualTo(expected40Mb)
-        assertThat(spec40Pct.videoBitrateBps).isGreaterThan(BitrateCalculator.calculateTargetBitrate(target16Mb, 60.0).videoBitrateBps)
+        // The estimate must match the encoder's shared fixed-cap contract.
+        assertThat(spec40Pct.effectiveTargetBytes).isAtMost(target16Mb.maxAllowedBytes)
+        assertThat(spec40Pct.videoBitrateBps).isEqualTo(
+            BitrateCalculator.calculateTargetBitrate(target16Mb, 60.0).videoBitrateBps
+        )
     }
 
     @Test
@@ -299,5 +327,76 @@ class BitrateCalculatorTest {
         assertThat(spec100Pct.videoBitrateBps).isAtMost(BitrateCalculator.MAX_VIDEO_BITRATE_BPS)
         assertThat(spec100Pct.videoBitrateBps).isAtMost(8_000_000)
     }
-}
 
+    @Test
+    fun `effective target never exceeds a small source file`() {
+        val sourceBytes = 32 * 1024L
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 2.0,
+            sourceSizeBytes = sourceBytes,
+            quality = ConversionQuality.Medium
+        )
+
+        assertThat(spec.effectiveTargetBytes).isAtMost(sourceBytes)
+    }
+
+    @Test
+    fun `long video can mathematically fit a tight target without retry deadlock`() {
+        val target16Mb = TargetSize.fromMegabytes(16)
+        val spec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = target16Mb,
+            durationSeconds = 924.25,
+            sourceSizeBytes = 80_612_645L,
+            sourceHeight = 1080,
+            quality = ConversionQuality.Medium
+        )
+
+        assertThat(spec.estimatedTotalSizeBytes).isAtMost(target16Mb.maxAllowedBytes)
+        assertThat(spec.videoBitrateBps).isLessThan(120_000)
+    }
+
+    @Test
+    fun `shared effective target calculation matches encoder spec for displayed estimate`() {
+        val sourceBytes = 60 * 1024 * 1024L
+        val targetBytes = TargetSize.fromMegabytes(16)
+        val quality = ConversionQuality.Medium
+
+        val displayedEstimate = BitrateCalculator.calculateEffectiveTargetBytes(
+            targetSize = targetBytes,
+            sourceSizeBytes = sourceBytes,
+            quality = quality
+        )
+        val encoderSpec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = targetBytes,
+            durationSeconds = 600.0,
+            sourceSizeBytes = sourceBytes,
+            quality = quality
+        )
+
+        assertThat(displayedEstimate).isEqualTo(encoderSpec.effectiveTargetBytes)
+        assertThat(displayedEstimate).isAtMost(targetBytes.maxAllowedBytes)
+        assertThat(displayedEstimate).isAtMost(sourceBytes)
+    }
+
+    @Test
+    fun `shared target calculation applies the same minimum and source cap as encoder`() {
+        val tinySource = 32 * 1024L
+        val quality = ConversionQuality.Custom(1)
+
+        val displayedEstimate = BitrateCalculator.calculateEffectiveTargetBytes(
+            targetSize = TargetSize.fromMegabytes(16),
+            sourceSizeBytes = tinySource,
+            quality = quality
+        )
+        val encoderSpec = BitrateCalculator.calculateTargetBitrate(
+            targetSize = TargetSize.fromMegabytes(16),
+            durationSeconds = 2.0,
+            sourceSizeBytes = tinySource,
+            quality = quality
+        )
+
+        assertThat(displayedEstimate).isEqualTo(encoderSpec.effectiveTargetBytes)
+        assertThat(displayedEstimate).isEqualTo(tinySource)
+    }
+}

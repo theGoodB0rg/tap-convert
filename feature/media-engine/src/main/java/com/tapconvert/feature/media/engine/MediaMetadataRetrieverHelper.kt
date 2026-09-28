@@ -1,6 +1,7 @@
 package com.tapconvert.feature.media.engine
 
 import android.media.MediaMetadataRetriever
+import android.media.MediaExtractor
 import java.io.File
 
 object MediaMetadataRetrieverHelper {
@@ -45,7 +46,7 @@ object MediaMetadataRetrieverHelper {
             val rotation = rotationStr?.toIntOrNull() ?: 0
 
             val hasAudioStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_HAS_AUDIO)
-            val hasAudio = hasAudioStr != null && hasAudioStr == "yes"
+            val hasAudio = hasAudioStr == "yes" || hasAudioTrack(file)
 
             val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
 
@@ -70,5 +71,19 @@ object MediaMetadataRetrieverHelper {
             } catch (_: Throwable) {}
         }
     }
-}
 
+    private fun hasAudioTrack(file: File): Boolean {
+        val extractor = MediaExtractor()
+        return try {
+            extractor.setDataSource(file.absolutePath)
+            (0 until extractor.trackCount).any {
+                extractor.getTrackFormat(it).getString(android.media.MediaFormat.KEY_MIME)
+                    ?.startsWith("audio/") == true
+            }
+        } catch (_: Throwable) {
+            false
+        } finally {
+            runCatching { extractor.release() }
+        }
+    }
+}

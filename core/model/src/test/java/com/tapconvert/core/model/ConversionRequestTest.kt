@@ -27,7 +27,9 @@ class ConversionRequestTest {
 
         assertThat(request.conversionType).isEqualTo(ConversionType.VIDEO_COMPRESS)
         assertThat(request.targetMimeType).isEqualTo(MimeType.Video.MP4)
-        assertThat(request.targetSize).isEqualTo(TargetSize.fromMegabytes(16))
+        assertThat(request.targetSize).isEqualTo(
+            TargetSize.fromMegabytes(16, toleranceBytes = TargetSize.DEFAULT_VIDEO_TOLERANCE_BYTES)
+        )
         assertThat(request.dimensionConstraint).isEqualTo(DimensionConstraint.MaxDimension(1280))
         assertThat(request.outputFileName).isEqualTo("whatsapp_out.mp4")
         assertThat(request.preset).isEqualTo(Preset.WhatsAppVideo16MB)
@@ -47,4 +49,3 @@ class ConversionRequestTest {
         assertThat(unbrandedRequest.includeBranding).isFalse()
     }
 }
-

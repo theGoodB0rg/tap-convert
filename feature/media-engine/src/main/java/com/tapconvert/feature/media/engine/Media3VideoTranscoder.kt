@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.tapconvert.feature.media.engine
 
 import android.content.Context
@@ -10,6 +12,7 @@ import androidx.media3.transformer.Composition
 import androidx.media3.transformer.DefaultEncoderFactory
 import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
+import androidx.media3.transformer.AudioEncoderSettings
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
@@ -57,6 +60,17 @@ class Media3VideoTranscoder(
         val currentContext = context
         if (currentContext == null) {
             // Fallback for non-Android / JVM testing environments without Context
+            if (sourceFile.exists() && sourceFile.length() > encodingSpec.effectiveTargetBytes) {
+                emit(
+                    AppResult.Error(
+                        ConversionError.OutputBudgetExceeded(
+                            actualBytes = sourceFile.length(),
+                            limitBytes = encodingSpec.effectiveTargetBytes
+                        )
+                    )
+                )
+                return@flow
+            }
             try {
                 outputFile.parentFile?.mkdirs()
                 sourceFile.copyTo(outputFile, overwrite = true)
@@ -142,9 +156,13 @@ class Media3VideoTranscoder(
         val encoderSettings = VideoEncoderSettings.Builder()
             .setBitrate(encodingSpec.videoBitrateBps)
             .build()
+        val audioEncoderSettings = AudioEncoderSettings.Builder()
+            .setBitrate(encodingSpec.audioBitrateBps.coerceIn(8_000, 192_000))
+            .build()
 
         val encoderFactory = DefaultEncoderFactory.Builder(currentContext)
             .setRequestedVideoEncoderSettings(encoderSettings)
+            .setRequestedAudioEncoderSettings(audioEncoderSettings)
             .build()
 
         val transformerBuilder = Transformer.Builder(currentContext)
@@ -173,9 +191,15 @@ class Media3VideoTranscoder(
         }
 
         val mediaItem = MediaItem.fromUri(Uri.fromFile(sourceFile))
-        val editedMediaItem = EditedMediaItem.Builder(mediaItem)
+        val editedMediaItemBuilder = EditedMediaItem.Builder(mediaItem)
             .setEffects(effects)
-            .build()
+        if (encodingSpec.videoBitrateBps < 100_000) {
+            // Extreme-duration budgets do not need source-frame cadence. Keep
+            // the complete timeline and soundtrack while processing roughly
+            // one video frame per second instead of decoding every frame.
+            editedMediaItemBuilder.setFrameRate(1)
+        }
+        val editedMediaItem = editedMediaItemBuilder.build()
 
         try {
             withContext(mainDispatcher) {

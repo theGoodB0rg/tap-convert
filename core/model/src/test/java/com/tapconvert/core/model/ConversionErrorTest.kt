@@ -29,6 +29,30 @@ class ConversionErrorTest {
     }
 
     @Test
+    fun `CodecBudgetUnachievable gives actionable encoder guidance`() {
+        val error = ConversionError.CodecBudgetUnachievable(
+            encoder = "c2.android.avc.encoder",
+            targetBytes = 16 * 1024L * 1024L
+        )
+
+        assertThat(error.userReadableMessage).contains("c2.android.avc.encoder")
+        assertThat(error.userReadableMessage).contains("16 MB")
+        assertThat(error.userReadableMessage.lowercase()).contains("less aggressive")
+    }
+
+    @Test
+    fun `OutputBudgetExceeded explains that oversized output was not published`() {
+        val error = ConversionError.OutputBudgetExceeded(
+            actualBytes = 160 * 1024L * 1024L,
+            limitBytes = 16 * 1024L * 1024L
+        )
+
+        assertThat(error.userReadableMessage).contains("160 MB")
+        assertThat(error.userReadableMessage).contains("16 MB")
+        assertThat(error.userReadableMessage.lowercase()).contains("no output was published")
+    }
+
+    @Test
     fun `InsufficientStorage includes required and available numbers`() {
         val error = ConversionError.InsufficientStorage(
             requiredBytes = 50 * 1024L * 1024L,

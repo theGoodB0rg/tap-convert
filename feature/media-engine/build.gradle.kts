@@ -46,6 +46,12 @@ dependencies {
     implementation(libs.androidx.media3.effect)
     implementation(libs.androidx.media3.common)
     implementation(libs.androidx.media3.exoplayer)
+    // LGPL build; used only for codec-floor fallback paths.
+    implementation(libs.ffmpeg.kit.full)
+    // The maintained AAR currently references this runtime class but does not
+    // publish it in its POM; keep the dependency explicit so device builds do
+    // not fail with NoClassDefFoundError.
+    implementation(libs.smart.exception.java)
 
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
@@ -63,4 +69,8 @@ dependencies {
     androidTestImplementation(libs.truth)
     androidTestImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.turbine)
+    // Android instrumentation packages the library's runtime separately;
+    // declare native FFmpeg and its Java helper explicitly for device tests.
+    androidTestImplementation(libs.ffmpeg.kit.full)
+    androidTestImplementation(libs.smart.exception.java)
 }

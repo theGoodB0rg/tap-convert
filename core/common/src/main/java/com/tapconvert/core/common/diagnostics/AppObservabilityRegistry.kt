@@ -15,6 +15,7 @@ class AppObservabilityRegistry(
     private val totalFailed = AtomicLong(0)
     private val totalDurationMs = AtomicLong(0)
     private val traces = ConcurrentLinkedDeque<ConversionTraceRecord>()
+    private val events = ConcurrentLinkedDeque<ObservationEventRecord>()
 
     private val _healthState = MutableStateFlow(createSnapshot())
     val healthState: StateFlow<SystemHealthSnapshot> = _healthState.asStateFlow()
@@ -79,6 +80,32 @@ class AppObservabilityRegistry(
         updateSnapshot()
     }
 
+    /**
+     * Records a bounded, sanitized observation for local diagnostics. Values are
+     * stringified and capped so future analytics sinks cannot accidentally receive
+     * paths, credentials, or unbounded payloads from this observation point.
+     */
+    fun recordEvent(name: String, params: Map<String, Any> = emptyMap()) {
+        val safeName = DiagnosticSanitizer.sanitizeMessage(name).take(80)
+        val safeParams = params.entries
+            .take(32)
+            .associate { entry ->
+                val safeKey = entry.key.take(64)
+                val rawValue = entry.value.toString()
+                val safeValue = if (safeKey.lowercase().contains(Regex("path|uri|filename|file_name"))) {
+                    DiagnosticSanitizer.sanitizePath(rawValue)
+                } else {
+                    DiagnosticSanitizer.sanitizeMessage(rawValue).take(256)
+                }
+                safeKey to safeValue
+            }
+        events.addFirst(ObservationEventRecord(safeName, safeParams))
+        while (events.size > maxTracesCapacity) {
+            events.pollLast()
+        }
+        updateSnapshot()
+    }
+
     fun createSnapshot(): SystemHealthSnapshot {
         val runtime = Runtime.getRuntime()
         val totalMem = runtime.totalMemory() / (1024 * 1024)
@@ -106,6 +133,7 @@ class AppObservabilityRegistry(
             totalConversionsFailed = totalFailed.get(),
             averageDurationMs = avgDuration,
             recentTraces = traces.toList(),
+            recentEvents = events.toList(),
             cacheSizeBytes = 0L,
             hardwareEncoders = emptyList()
         )
@@ -134,6 +162,14 @@ class AppObservabilityRegistry(
             "failed": ${snap.totalConversionsFailed},
             "avgDurationMs": ${snap.averageDurationMs}
           },
+          "recentEvents": [
+            ${snap.recentEvents.take(20).joinToString(separator = ",\n      ") { event ->
+                val params = event.params.entries.joinToString(",") { (key, value) ->
+                    "\"${key.replace("\"", "\\\"")}\":\"${value.replace("\"", "\\\"")}\""
+                }
+                "{\"name\":\"${event.name.replace("\"", "\\\"")}\",\"params\":{$params},\"timestamp\":${event.timestamp}}"
+            }}
+          ],
           "recentTraces": [
             $tracesJson
           ]

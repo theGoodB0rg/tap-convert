@@ -2,6 +2,7 @@ package com.tapconvert.feature.media.engine
 
 import app.cash.turbine.test
 import com.google.common.truth.Truth.assertThat
+import com.tapconvert.core.analytics.AnalyticsEvent
 import com.tapconvert.core.common.AppResult
 import com.tapconvert.core.model.ConversionError
 import com.tapconvert.core.model.ConversionQuality
@@ -72,7 +73,11 @@ class MediaEngineTest {
             }
         }
 
-        val engine = DefaultMediaEngine(transcoder = fakeTranscoder, analyticsTracker = fakeAnalytics)
+        val engine = DefaultMediaEngine(
+            transcoder = fakeTranscoder,
+            analyticsTracker = fakeAnalytics,
+            integrityChecker = MediaIntegrityChecker { _, _ -> MediaIntegrityCheck(null, null) }
+        )
         val request = ConversionRequest(
             sourceUris = listOf("file://${testSourceFile.absolutePath}"),
             conversionType = ConversionType.VIDEO_COMPRESS,
@@ -107,6 +112,11 @@ class MediaEngineTest {
         }
 
         assertThat(fakeAnalytics.completedConversions).hasSize(1)
+        assertThat(fakeAnalytics.startedConversions.single().inputSizeBytes)
+            .isEqualTo(testSourceFile.length())
+        assertThat(fakeAnalytics.allEvents.filterIsInstance<AnalyticsEvent.Custom>()
+            .map { it.eventName })
+            .contains("video_compression_warning")
     }
 
     @Test
@@ -120,8 +130,8 @@ class MediaEngineTest {
             ): Flow<AppResult<File>> = flow {
                 callCount++
                 if (callCount == 1) {
-                    // First attempt: Overshoots target budget (produces 1MB when target is ~512KB)
-                    outputFile.writeBytes(ByteArray(1024 * 1024) { 0xAA.toByte() })
+                    // First attempt: ordinary overshoot (produces 900KB when target is ~512KB)
+                    outputFile.writeBytes(ByteArray(900 * 1024) { 0xAA.toByte() })
                 } else {
                     // Second attempt: Properly compressed within budget (produces 400KB)
                     outputFile.writeBytes(ByteArray(400 * 1024) { 0xBB.toByte() })
@@ -165,7 +175,8 @@ class MediaEngineTest {
             awaitComplete()
         }
 
-        // Verify that transcoder was called twice (initial + compensated retry)
+        // A severe 2x+ overshoot fails fast; ordinary overshoots below 2x
+        // still receive one compensation retry.
         assertThat(callCount).isEqualTo(2)
         assertThat(fakeAnalytics.completedConversions).hasSize(1)
 
@@ -174,6 +185,86 @@ class MediaEngineTest {
             assertThat(stepDesc.lowercase()).doesNotContain("attempt")
             assertThat(stepDesc.lowercase()).doesNotContain("retry")
         }
+    }
+
+    @Test
+    fun `compressVideo keeps progress monotonic across batch items`() = runTest {
+        val secondSource = File(System.getProperty("java.io.tmpdir"), "test_video_input_2.mp4").apply {
+            writeBytes(ByteArray(1024) { 0x33 })
+        }
+        val fakeTranscoder = object : VideoTranscoder {
+            override fun transcode(
+                sourceFile: File,
+                outputFile: File,
+                encodingSpec: BitrateCalculator.VideoEncodingSpec
+            ): Flow<AppResult<File>> = flow {
+                emit(AppResult.Progress(0, "start"))
+                emit(AppResult.Progress(100, "done"))
+                outputFile.writeBytes(ByteArray(512) { 0x11 })
+                emit(AppResult.Success(outputFile))
+            }
+        }
+
+        val engine = DefaultMediaEngine(transcoder = fakeTranscoder, analyticsTracker = fakeAnalytics)
+        val request = ConversionRequest(
+            sourceUris = listOf("file://${testSourceFile.absolutePath}", "file://${secondSource.absolutePath}"),
+            conversionType = ConversionType.VIDEO_COMPRESS,
+            targetMimeType = MimeType.Video.MP4,
+            quality = ConversionQuality.Custom(50)
+        )
+        val progress = mutableListOf<Int>()
+
+        engine.compressVideo(request, tempDir).test {
+            while (true) {
+                when (val item = awaitItem()) {
+                    is AppResult.Progress -> progress += item.percentage
+                    is AppResult.Success, is AppResult.Error -> break
+                }
+            }
+            cancelAndIgnoreRemainingEvents()
+        }
+
+        assertThat(progress).isNotEmpty()
+        assertThat(progress.zipWithNext().all { (previous, current) -> current >= previous }).isTrue()
+    }
+
+    @Test
+    fun `compressVideo refuses to publish output when encoder never meets hard byte budget`() = runTest {
+        var callCount = 0
+        val alwaysOvershootingTranscoder = object : VideoTranscoder {
+            override fun transcode(
+                sourceFile: File,
+                outputFile: File,
+                encodingSpec: BitrateCalculator.VideoEncodingSpec
+            ): Flow<AppResult<File>> = flow {
+                callCount++
+                outputFile.writeBytes(ByteArray(1024 * 1024) { 0x22 })
+                emit(AppResult.Success(outputFile))
+            }
+        }
+        val source = File(System.getProperty("java.io.tmpdir"), "hard_budget_source.mp4").apply {
+            writeBytes(ByteArray(5 * 1024 * 1024) { 0x44 })
+        }
+        val engine = DefaultMediaEngine(transcoder = alwaysOvershootingTranscoder, analyticsTracker = fakeAnalytics)
+        val request = ConversionRequest(
+            sourceUris = listOf("file://${source.absolutePath}"),
+            conversionType = ConversionType.VIDEO_COMPRESS,
+            targetMimeType = MimeType.Video.MP4,
+            quality = ConversionQuality.Custom(10)
+        )
+
+        engine.compressVideo(request, tempDir).test {
+            var terminal: AppResult<ConversionResult>? = null
+            while (terminal == null) {
+                val item = awaitItem()
+                if (item is AppResult.Error || item is AppResult.Success) terminal = item
+            }
+            assertThat(terminal).isInstanceOf(AppResult.Error::class.java)
+            awaitComplete()
+        }
+
+        assertThat(callCount).isEqualTo(1)
+        assertThat(tempDir.listFiles { _, name -> name.endsWith(".tmp") }).isEmpty()
     }
 
     @Test
@@ -190,7 +281,11 @@ class MediaEngineTest {
             }
         }
 
-        val engine = DefaultMediaEngine(transcoder = failingTranscoder, analyticsTracker = fakeAnalytics)
+        val engine = DefaultMediaEngine(
+            transcoder = failingTranscoder,
+            analyticsTracker = fakeAnalytics,
+            integrityChecker = MediaIntegrityChecker { _, _ -> MediaIntegrityCheck(null, null) }
+        )
         val request = ConversionRequest(
             sourceUris = listOf("file://${testSourceFile.absolutePath}"),
             conversionType = ConversionType.VIDEO_COMPRESS,
@@ -225,7 +320,11 @@ class MediaEngineTest {
             }
         }
 
-        val engine = DefaultMediaEngine(transcoder = failingTranscoder, analyticsTracker = fakeAnalytics)
+        val engine = DefaultMediaEngine(
+            transcoder = failingTranscoder,
+            analyticsTracker = fakeAnalytics,
+            integrityChecker = MediaIntegrityChecker { _, _ -> MediaIntegrityCheck(null, null) }
+        )
         val request = ConversionRequest(
             sourceUris = listOf("file://${testSourceFile.absolutePath}"),
             conversionType = ConversionType.VIDEO_COMPRESS,

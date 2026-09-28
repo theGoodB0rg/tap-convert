@@ -95,6 +95,15 @@ class NativeVideoTranscoder : VideoTranscoder {
                 sourceVideoFormat.getInteger(MediaFormat.KEY_FRAME_RATE)
             } catch (_: Throwable) { 30 }.coerceIn(15, 60)
 
+            // Audio is remuxed, not re-encoded, in this pipeline. Do not copy a
+            // track whose real bitrate exceeds the requested budget: it would
+            // invalidate the estimate and make video-only compensation ineffective.
+            val sourceAudioBitrate = try {
+                sourceAudioFormat?.getInteger(MediaFormat.KEY_BIT_RATE) ?: 0
+            } catch (_: Throwable) { 0 }
+            val copyAudio = audioTrackIndex != -1 && sourceAudioFormat != null &&
+                sourceAudioBitrate > 0 && sourceAudioBitrate <= encodingSpec.audioBitrateBps
+
             // Target dimensions computed from encodingSpec and aligned to macroblock boundaries
             val rawW = if (encodingSpec.targetWidth > 0) encodingSpec.targetWidth else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).first
             val rawH = if (encodingSpec.targetHeight > 0) encodingSpec.targetHeight else computeTargetDimensions(sourceWidth, sourceHeight, encodingSpec.recommendedMaxDimension).second
@@ -111,7 +120,13 @@ class NativeVideoTranscoder : VideoTranscoder {
                 outputMime = outputVideoMime
             )
 
-            encoder = MediaCodec.createEncoderByType(outputVideoMime)
+            val softwareEncoderName = if (encodingSpec.videoBitrateBps < 100_000) {
+                CodecCapabilityProber.findSoftwareAvcEncoder()
+            } else {
+                null
+            }
+            encoder = softwareEncoderName?.let { MediaCodec.createByCodecName(it) }
+                ?: MediaCodec.createEncoderByType(outputVideoMime)
             encoder.configure(targetFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             val encoderInputSurface = encoder.createInputSurface()
             encoder.start()
@@ -146,6 +161,8 @@ class NativeVideoTranscoder : VideoTranscoder {
             val kIdleTimeoutUs = 250L
 
             var lastReportedProgress = 5
+            val minOutputFrameIntervalUs = if (encodingSpec.videoBitrateBps < 100_000) 1_000_000L else 0L
+            var lastRenderedPresentationUs = Long.MIN_VALUE
 
             while (!encoderDone && !isCancelled && currentCoroutineContext().isActive) {
                 var hadActivity = false
@@ -177,7 +194,12 @@ class NativeVideoTranscoder : VideoTranscoder {
                     when {
                         decoderStatus >= 0 -> {
                             hadActivity = true
-                            if (bufferInfo.size > 0) {
+                            val shouldRender = bufferInfo.size > 0 &&
+                                (minOutputFrameIntervalUs == 0L ||
+                                    lastRenderedPresentationUs == Long.MIN_VALUE ||
+                                    bufferInfo.presentationTimeUs - lastRenderedPresentationUs >= minOutputFrameIntervalUs)
+                            if (shouldRender) {
+                                lastRenderedPresentationUs = bufferInfo.presentationTimeUs
                                 // Must pass nanoseconds timestamp to encoder input surface to prevent wall-clock fallback distortion
                                 decoder.releaseOutputBuffer(decoderStatus, bufferInfo.presentationTimeUs * 1000L)
                             } else {
@@ -210,7 +232,7 @@ class NativeVideoTranscoder : VideoTranscoder {
                             val newFormat = encoder.outputFormat
                             muxerVideoTrack = muxer.addTrack(newFormat)
 
-                            if (audioTrackIndex != -1 && sourceAudioFormat != null) {
+                            if (copyAudio) {
                                 muxerAudioTrack = muxer.addTrack(sourceAudioFormat)
                             }
                             muxer.start()
@@ -230,7 +252,7 @@ class NativeVideoTranscoder : VideoTranscoder {
                                     muxer.writeSampleData(muxerVideoTrack, encodedBuffer, bufferInfo)
 
                                     // Interleave audio samples up to current video PTS
-                                    if (audioTrackIndex != -1 && muxerAudioTrack != -1 && !audioDone) {
+                                    if (copyAudio && muxerAudioTrack != -1 && !audioDone) {
                                         while (true) {
                                             val audioSampleTime = audioExtractor.sampleTime
                                             if (audioSampleTime < 0 || audioSampleTime > bufferInfo.presentationTimeUs) {
@@ -245,7 +267,11 @@ class NativeVideoTranscoder : VideoTranscoder {
                                             }
                                             audioBufferInfo.size = sampleSize
                                             audioBufferInfo.presentationTimeUs = audioSampleTime
-                                            audioBufferInfo.flags = audioExtractor.sampleFlags
+                                            audioBufferInfo.flags = if ((audioExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                                                MediaCodec.BUFFER_FLAG_KEY_FRAME
+                                            } else {
+                                                0
+                                            }
 
                                             audioBuffer.position(0)
                                             audioBuffer.limit(sampleSize)
@@ -290,7 +316,7 @@ class NativeVideoTranscoder : VideoTranscoder {
             }
 
             // 4. Mux any remaining trailing audio track samples to completion
-            if (audioTrackIndex != -1 && muxerStarted && muxerAudioTrack != -1 && !audioDone) {
+            if (copyAudio && muxerStarted && muxerAudioTrack != -1 && !audioDone) {
                 emit(AppResult.Progress(96, "Finalizing audio stream..."))
                 while (true) {
                     audioBufferInfo.offset = 0
@@ -299,7 +325,11 @@ class NativeVideoTranscoder : VideoTranscoder {
 
                     audioBufferInfo.size = sampleSize
                     audioBufferInfo.presentationTimeUs = audioExtractor.sampleTime
-                    audioBufferInfo.flags = audioExtractor.sampleFlags
+                    audioBufferInfo.flags = if ((audioExtractor.sampleFlags and MediaExtractor.SAMPLE_FLAG_SYNC) != 0) {
+                        MediaCodec.BUFFER_FLAG_KEY_FRAME
+                    } else {
+                        0
+                    }
 
                     audioBuffer.position(0)
                     audioBuffer.limit(sampleSize)

@@ -40,6 +40,7 @@ import com.tapconvert.app.ui.theme.SavingsGreen
 import com.tapconvert.core.model.ConversionQuality
 import com.tapconvert.core.model.ConversionRequest
 import com.tapconvert.core.model.ConversionType
+import com.tapconvert.feature.media.engine.BitrateCalculator
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,15 +79,28 @@ fun ConfigurationScreen(
         (100 - sliderPosition.toInt()).coerceIn(5, 95)
     }
 
-    val estimatedTargetBytes = remember(sliderPosition, totalSourceBytes) {
+    val estimatedTargetBytes = remember(sliderPosition, totalSourceBytes, request.conversionType, request.targetSize) {
         if (totalSourceBytes > 0L) {
-            (totalSourceBytes * (sliderPosition / 100f)).toLong()
+            if (request.conversionType == ConversionType.VIDEO_COMPRESS) {
+                BitrateCalculator.calculateEffectiveTargetBytes(
+                    targetSize = request.targetSize,
+                    sourceSizeBytes = totalSourceBytes,
+                    quality = request.quality
+                )
+            } else {
+                val qualityEstimate = (totalSourceBytes * (sliderPosition / 100f)).toLong()
+                if (request.quality is ConversionQuality.Custom) {
+                    qualityEstimate
+                } else {
+                    minOf(qualityEstimate, request.targetSize?.bytes ?: Long.MAX_VALUE)
+                }
+            }
         } else {
             request.targetSize?.bytes ?: 0L
         }
     }
 
-    val presetCapBytes = request.targetSize?.bytes
+    val presetCapBytes = request.targetSize?.maxAllowedBytes
     val recommendedPresetQualityPct = remember(totalSourceBytes, request.preset) {
         val preset = request.preset
         val target = preset?.targetSize?.bytes
@@ -102,8 +116,12 @@ fun ConfigurationScreen(
     }
 
     val isExceedingPresetLimit = remember(estimatedTargetBytes, presetCapBytes) {
-        presetCapBytes != null && estimatedTargetBytes > (presetCapBytes * 1.03)
+        presetCapBytes != null && estimatedTargetBytes > presetCapBytes
     }
+
+    val isUnrealisticCompression = request.conversionType == ConversionType.VIDEO_COMPRESS &&
+        totalSourceBytes > 0L && estimatedTargetBytes > 0L &&
+        estimatedTargetBytes.toDouble() / totalSourceBytes.toDouble() < 0.10
 
     // Enlarged Image Inspection Dialog
     if (previewImageUri != null) {
@@ -641,6 +659,15 @@ fun ConfigurationScreen(
                                 }
                             }
                         }
+                    }
+
+                    if (isUnrealisticCompression) {
+                        Text(
+                            text = "Very aggressive compression may noticeably reduce quality; use only when necessary.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
                     }
                 }
             }
