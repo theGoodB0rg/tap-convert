@@ -13,3 +13,24 @@ captures/
 .cxx
 *.apk
 *.aab
+
+# --- private/internal: never public (publishing workflow lives locally only) ---
+TODO.md
+scripts/
+docs/store/
+docs/screenshots/store/
+
+# --- secrets & signing: never commit ---
+*.jks
+*.keystore
+*.p12
+*.pem
+*service-account*.json
+play-automation-*.json
+google-services.json
+.env
+
+# --- local test media (root captures, not portfolio assets) ---
+*.mp4
+phone-home.png
+tapconvert-home.png
